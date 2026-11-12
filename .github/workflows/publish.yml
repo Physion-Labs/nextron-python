@@ -1,0 +1,54 @@
+name: publish
+
+# Run by hand with the version to publish. PyPI trusts this workflow through OIDC (trusted publishing), so no token
+# is stored anywhere; the pypi-publish environment's reviewers approve each run. A version cannot be published twice.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to publish; must equal src/nextron_cloud/_version.py
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.repository == 'Physion-Labs/nextron-python'
+    runs-on: ubuntu-latest
+    environment: pypi-publish
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ inputs.version }}   # exactly the release tag, whatever branch the run was started from
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: The version asked for is the version in the code
+        env:
+          WANT: ${{ inputs.version }}
+        run: |
+          have=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/nextron_cloud/_version.py)
+          [ "$have" = "$WANT" ] || { echo "::error::the code is $have, asked to publish $WANT"; exit 1; }
+      - run: uv sync --frozen
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv build
+      - name: The wheel and sdist carry the package, the license and the guide, and nothing else
+        run: |
+          python3 - <<'PY'
+          import glob, tarfile, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = set(zipfile.ZipFile(wheel).namelist())
+          info = next(n.split("/")[0] for n in names if n.endswith(".dist-info/METADATA"))
+          need = {"nextron_cloud/py.typed", "nextron_cloud/guide/SKILL.md", "nextron_cloud/guide/references/api.md", f"{info}/licenses/LICENSE"}
+          assert need <= names, f"{wheel} is missing {sorted(need - names)}"
+          assert all(n.startswith(("nextron_cloud/", info)) for n in names), f"{wheel} ships {sorted(names)}"
+          sdist = glob.glob("dist/*.tar.gz")[0]
+          tops = {n.split("/", 2)[1] for n in tarfile.open(sdist).getnames() if n.count("/")}
+          allowed = {"src", "skills", "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml", "PKG-INFO", ".gitignore"}
+          assert tops <= allowed, f"{sdist} ships {sorted(tops - allowed)}"
+          print(wheel, sdist, "ok")
+          PY
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          attestations: true

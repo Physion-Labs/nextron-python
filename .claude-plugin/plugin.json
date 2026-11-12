@@ -1,0 +1,10 @@
+{
+  "name": "nextron-cloud",
+  "description": "Fine-tune open models on NexTron Cloud: data preparation, uploads, training jobs and checkpoints.",
+  "version": "0.1.0",
+  "author": { "name": "Physion Labs", "email": "support@physionlabs.ai" },
+  "homepage": "https://nextron.physionlabs.ai",
+  "repository": "https://github.com/Physion-Labs/nextron-python",
+  "license": "Apache-2.0",
+  "keywords": ["nextron", "fine-tuning", "sft", "lora", "llm"]
+}

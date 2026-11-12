@@ -1,0 +1,6 @@
+{
+  "name": "nextron",
+  "owner": { "name": "Physion Labs", "email": "support@physionlabs.ai" },
+  "metadata": { "description": "Claude Code skills for NexTron Cloud.", "version": "0.1.0" },
+  "plugins": [{ "name": "nextron-cloud", "description": "Fine-tune open models on NexTron Cloud.", "source": "./", "strict": true }]
+}
