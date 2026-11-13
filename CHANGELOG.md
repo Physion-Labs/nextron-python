@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0rc2
+
+- The README's agent prompt asks what you need instead of leaving brackets to fill, and links the source.
+- The local format check accepts lines up to 32 MB, as the server now does.
+- `datasets list --sample --table --model M`: sample datasets with tokens, longest sample and samples over the
+  model's `max_seq_len`. The agent prompt asks whether to use a sample dataset or your own data.
+- CLI output of a job includes `done` and `checkpoint_ready`.
+- Guide: plan with the steps `estimate` returns, budgets against estimates, `engine_debug_log`, where to get
+  `compare_outputs.py`.
+
 ## 0.1.0rc1
 
 First release candidate.

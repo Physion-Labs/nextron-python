@@ -35,7 +35,7 @@ PAIRS = (("prompt", "completion"), ("prompt", "response"), ("query", "response")
          ("problem", "solution"), ("input", "output"))
 MEDIA_FIELDS = ("image", "images", "video", "videos", "audio", "audios")
 MEDIA_ERROR = "has an image, audio or video part; NexTron Cloud trains on text only for now"
-MAX_LINE_BYTES = 4 << 20
+MAX_LINE_BYTES = 32 << 20
 MAX_FILE_BYTES = 5 * 1000**3
 MAX_ERRORS = 5  # the server also reports only the first five
 

@@ -1,8 +1,24 @@
 # Data
 
+## Your data or a sample dataset
+
+Ask the owner which. Their own data (a file or a Hugging Face link) is what teaches the model their task; the rest of
+this page is about preparing it. Sample datasets, which every account can train on, are for trying the service or a
+model without preparing data:
+
+```bash
+nextron-cloud datasets list --sample --table --model qwen3.8-27b
+```
+
+lists each one's samples, tokens and longest sample for that model, and how many samples are over the model's
+`max_seq_len` (they would be truncated: pick the model's long-context id, such as `...-256k`, or accept it).
+`source` says where each comes from. The ones marked `validation` are held-out sets: pass one as `val_dataset_id`
+with the training set of the same name. Sample datasets hold tens of millions of tokens, so a full epoch is costly:
+cap a trial with `max_steps` and show the owner the estimate.
+
 ## The format
 
-A dataset is a JSONL file: UTF-8, one JSON object per line, at most 4 MB a line and 5 GB a file.
+A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line and 5 GB a file.
 
 ```json
 {"messages": [{"role": "system", "content": "You are terse."}, {"role": "user", "content": "2+2?"}, {"role": "assistant", "content": "4"}]}

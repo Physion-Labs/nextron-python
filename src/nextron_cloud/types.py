@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 JobState = Literal["queued", "submitting", "pending", "running", "succeeded", "failed", "cancelled"]
 DatasetState = Literal["uploading", "importing", "checking", "ready", "invalid", "deleted"]
@@ -107,11 +107,13 @@ class Job(_Model):
     timeline: dict[str, float | None] | None = None  # queued, starting, training, trained, saved, done; from `get`
     config: str | None = None  # the training config the engine ran, paths masked
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def done(self) -> bool:
         """Training is over: succeeded, failed or cancelled. The checkpoint may still be uploading."""
         return self.state in JOB_DONE
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def checkpoint_ready(self) -> bool:
         """The checkpoint can be downloaded (only a succeeded job has one)."""

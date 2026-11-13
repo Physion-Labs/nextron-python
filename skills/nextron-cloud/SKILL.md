@@ -40,7 +40,8 @@ https://nextron.physionlabs.ai, opens **API keys** (only an organisation owner c
 ## Rules
 
 1. **Jobs cost the owner money. Ask before starting one.** Run `jobs.estimate` with the exact arguments you will
-   create with, tell the owner the cost (`credits` / 100 = US dollars), the model and the plan, and wait for a yes.
+   create with, tell the owner the cost (`credits` / 100 = US dollars), the model and the plan, and whether the data
+   fits (the model's `max_seq_len`, the data's longest sample, `truncated_samples`), and wait for a yes.
    The CLI enforces this: `nextron-cloud jobs create ...` without `--yes` prints the estimate and starts nothing.
 2. **Take models and limits from `client.models()`**, never from memory or this file: model ids, which methods each
    trains (`full`, `lora`), the longest sample per method, prices, GPU setups and whether one is free now.
@@ -72,7 +73,7 @@ for m in client.models():
     print(m.id, {k: (v.max_seq_len, v.price_per_mtok) for k, v in m.methods.items()},
           {l: (x.available, x.queued) for l, x in m.layouts.items()})
 
-# 2. Data: convert, check, hold out a validation set, upload.
+# 2. Data: the owner's own, converted, checked, split and uploaded; or a sample dataset (references/data.md).
 prepare_file("tickets.csv", "data", prompt_column="ticket", response_column="reply")   # data/train.jsonl, data/val.jsonl
 train = client.datasets.wait(client.datasets.upload("data/train.jsonl").id)
 val = client.datasets.wait(client.datasets.upload("data/val.jsonl").id)

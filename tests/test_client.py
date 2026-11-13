@@ -189,3 +189,22 @@ def test_a_checkpoint_file_name_cannot_leave_the_destination(make_client, tmp_pa
     with pytest.raises(NexTronError, match="not a plain file name"):
         client.jobs.download_checkpoint("job_1", tmp_path / "ckpt")
     assert not (tmp_path / ".bashrc").exists()
+
+
+def test_cli_sample_table_counts_samples_over_the_models_longest(make_client, monkeypatch, capsys):
+    from nextron_cloud import cli
+    stats = {"total": 900, "max": 70000, "over": {"32768": 5, "65536": 2}}
+    datasets = [{"id": "ds_s", "name": "Math", "bytes": 1, "state": "ready", "created": 1.0, "samples": 10, "sample": True,
+                 "tokens": {"m": stats}},
+                {"id": "ds_own", "name": "mine", "bytes": 1, "state": "ready", "created": 1.0, "sample": False}]
+    method = {"max_seq_len": 65536, "layouts": []}
+    model = {"id": "m", "name": "M", "maker": "x", "params": "1B", "active_params": "1B", "architecture": "x",
+             "input": ["text"], "methods": {"full": method}, "batch_size": True, "validation_set": True, "layouts": {}}
+    answers = {"/v1/datasets": datasets, "/v1/models": [model]}
+    make_client(lambda request: httpx.Response(200, json=answers[request.url.path]))
+    monkeypatch.setenv("NEXTRON_API_KEY", "nk_test")
+    monkeypatch.setenv("NEXTRON_BASE_URL", "https://api.test")
+    cli.main(["datasets", "list", "--sample", "--table", "--model", "m"])
+    header, row = capsys.readouterr().out.splitlines()
+    assert header.split("\t")[-1] == "over_65536"
+    assert row.split("\t") == ["ds_s", "Math", "ready", "10", "False", "900", "70000", "2"]

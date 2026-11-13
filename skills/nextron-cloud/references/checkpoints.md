@@ -47,8 +47,9 @@ reply = llm.chat.completions.create(
   `enable_thinking: False` unless the training data had `<think>` reasoning; otherwise the model is prompted
   differently from how it was trained.
 - **Compare against the base model** on the same held-out prompts, served the same way: that is the effect of the
-  fine-tune. Use prompts that were not in the training data. `examples/compare_outputs.py` in this repository does
-  it: serve both models, then `python examples/compare_outputs.py data/val.jsonl --ft http://localhost:8000/v1
+  fine-tune. Use prompts that were not in the training data. `examples/compare_outputs.py` in the SDK's repository
+  (https://github.com/Physion-Labs/nextron-python/blob/main/examples/compare_outputs.py, not in the installed package)
+  does it: serve both models, then `python examples/compare_outputs.py data/val.jsonl --ft http://localhost:8000/v1
   --base http://localhost:8001/v1` writes both answers next to the reference and prints exact-match rates.
 - Use the task's own metric (exact match, a test suite, a rubric scored by a judge model) on a fixed evaluation set,
   and report the score with the job's name and id.

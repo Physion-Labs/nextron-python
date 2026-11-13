@@ -38,6 +38,7 @@ All optional; the server fills the rest from a tested recipe for the model.
 | `val_dataset_id` | | a ready dataset of at most 5,000 samples; its loss is reported as `val_loss` |
 | `eval_steps` | ~10 evaluations a run | steps between validation passes (at least 1: a 3-step run validates every step) |
 | `seed` | 42 | |
+| `engine_debug_log` | false | also log the engine's setup details (kernels, memory layout, packing); for debugging |
 
 `wandb={"api_key": ..., "project": ..., "entity": ..., "run_name": ...}` also logs to the owner's Weights & Biases
 (the key is stored encrypted and never returned).
@@ -52,6 +53,9 @@ tokens a step: 5M tokens on 8 GPUs ≈ 11 steps an epoch. `max_steps` cannot add
 least 8K tokens a step: the smallest batch is about 8 GPUs × 8,192 / average sample length (the server refuses less
 and says the minimum). Below about 16K a step runs less efficiently (a notice says so). The job's notices report the
 batch it actually used.
+
+Decide with the steps the job will really have: `estimate` returns `steps` for the batch you give. The same data can be
+under one step at the default batch and 17 steps at the smallest allowed `batch_size`.
 
 ### Small datasets
 
@@ -107,6 +111,8 @@ trains **one step per epoch**, and `batch_size` cannot help when the minimum bat
 - **Sweeps:** an account can have 10 jobs queued or running. Submit the whole sweep (`nextron-cloud sweep`, below),
   then wait; jobs queue when GPUs are busy and run in submission order. `jobs.list()` returns every job of the
   organisation, other members' and older runs included, so find yours by tag.
+- **A budget** means what is charged, but plan with the estimates (`credits`, what is held): the charge stays close
+  to them and is usually a little lower or higher. Sum the estimates of every job you propose.
 - **Learning rate** is the first thing to sweep: for example full 5e-6 / 1e-5 / 2e-5, LoRA 5e-5 / 1e-4 / 2e-4.
   Then epochs (1-3): stop increasing when `val_loss` turns up.
 - **Too few steps** (under ~20) make warmup and the schedule coarse: set `batch_size` smaller or train more epochs.

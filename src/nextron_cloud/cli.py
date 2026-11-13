@@ -84,6 +84,27 @@ def _report(client: NexTron, args: argparse.Namespace) -> Any:
     return None
 
 
+def _datasets_list(client: NexTron, args: argparse.Namespace) -> Any:
+    datasets = [d for d in client.datasets.list() if d.sample or not args.sample]
+    if not args.table:
+        return datasets
+    max_seq_len = None
+    if args.model:
+        models = {m.id: m for m in client.models()}
+        if args.model not in models:
+            raise SystemExit(f"unknown model {args.model}; see nextron-cloud models")
+        max_seq_len = max(method.max_seq_len for method in models[args.model].methods.values())
+    over_column = f"over_{max_seq_len}" if max_seq_len else "over_max_seq_len"
+    print("\t".join(["id", "name", "state", "samples", "validation", "tokens", "longest", over_column]))
+    for d in datasets:
+        stats = (d.tokens or {}).get(args.model or "", {})
+        tokens = stats.get("total", d.est_tokens)
+        over = stats.get("over", {}).get(str(max_seq_len))
+        row = [d.id, d.name, d.state, d.samples, d.validation, tokens, stats.get("max"), over]
+        print("\t".join("" if v is None else str(v) for v in row))
+    return None
+
+
 def _create(client: NexTron, args: argparse.Namespace) -> Any:
     draft = _draft(args)
     if not args.yes:
@@ -139,7 +160,12 @@ def _parser() -> argparse.ArgumentParser:
     groups.add_parser("layouts", help="GPU setups").set_defaults(run=lambda c, a: c.layouts())
 
     datasets = groups.add_parser("datasets", help="upload, import, check and list training data").add_subparsers(dest="cmd", required=True)
-    datasets.add_parser("list").set_defaults(run=lambda c, a: c.datasets.list())
+    cmd = datasets.add_parser("list", help="your datasets and the sample datasets every account can use")
+    cmd.add_argument("--sample", action="store_true", help="only the sample datasets")
+    cmd.add_argument("--table", action="store_true", help="tab-separated: samples, tokens, longest sample")
+    cmd.add_argument("--model", help="with --table: tokens and longest sample for this model, and how many samples are "
+                     "over its max_seq_len (they would be truncated)")
+    cmd.set_defaults(run=_datasets_list)
     cmd = datasets.add_parser("get")
     cmd.add_argument("dataset_id")
     cmd.set_defaults(run=lambda c, a: c.datasets.get(a.dataset_id))

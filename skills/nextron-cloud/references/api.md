@@ -75,7 +75,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 
 ```
 nextron-cloud me | models | layouts
-nextron-cloud datasets list | get ID | check PATH | upload PATH [--name N] | splits URL
+nextron-cloud datasets list [--sample] [--table [--model M]] | get ID | check PATH | upload PATH [--name N] | splits URL
 nextron-cloud datasets prepare PATH [--out-dir D] [--val-fraction F] [--seed S] [--prompt-column C ... --response-column C] [--system TEXT]
 nextron-cloud datasets import URL [--config C] [--split S] [--name N] | download-url ID | delete ID
 nextron-cloud jobs estimate --model M --dataset ID [--layout L] [--param KEY=VALUE ...]
