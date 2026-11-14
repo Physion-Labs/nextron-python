@@ -20,6 +20,7 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 | build, convert and check data; what is trained on | [references/data.md](references/data.md) |
 | watch a job, read its metrics, fix a failure | [references/monitoring.md](references/monitoring.md) |
 | download, serve and evaluate the checkpoint | [references/checkpoints.md](references/checkpoints.md) |
+| reinforcement learning (GRPO): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
 | every SDK call and CLI command | [references/api.md](references/api.md) |
 
 ## Setup
@@ -44,7 +45,7 @@ https://nextron.physionlabs.ai, opens **API keys** (only an organisation owner c
    fits (the model's `max_seq_len`, the data's longest sample, `truncated_samples`), and wait for a yes.
    The CLI enforces this: `nextron-cloud jobs create ...` without `--yes` prints the estimate and starts nothing.
 2. **Take models and limits from `client.models()`**, never from memory or this file: model ids, which methods each
-   trains (`full`, `lora`), the longest sample per method, prices, GPU setups and whether one is free now.
+   trains (`full`, `lora`, `grpo` for reinforcement learning), the longest sample per method, prices, GPU setups and whether one is free now.
    `jobs.estimate` runs the same checks as creating the job (it raises with the reason when the job would be refused)
    and returns the settings, about how many steps, and warnings: show those to the owner with the price.
 3. **Never start the same job twice.** `jobs.create` retries safely with one idempotency key. If your own process

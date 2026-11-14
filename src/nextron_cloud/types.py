@@ -79,7 +79,8 @@ class Dataset(_Model):
     sample: bool = False  # one of the sample datasets every account can train on
     validation: bool = False
     source: str | None = None
-    tokens: dict[str, Any] | None = None  # per model: total, longest sample, samples over each length
+    tokens: dict[str, Any] | None = None  # per model: total, longest sample (RL: longest prompt), samples over each length
+    kind: Literal["chat", "rl"] = "chat"  # rl: prompts with answers, for train_type "grpo"
 
     @property
     def done(self) -> bool:
@@ -175,6 +176,12 @@ class MetricPoint(_Model):
     tokens_per_s_per_gpu: int
     tokens_per_s_total: int
     val_loss: float | None = None
+    # GRPO: the round this step trained on
+    reward_mean: float | None = None
+    zero_variance_fraction: float | None = None  # prompts whose completions all scored the same: no learning signal
+    completion_length_mean: int | None = None
+    generation_s: float | None = None
+    round_time_s: float | None = None  # the whole round: generation, training and the weight sync
 
 
 class LogLine(_Model):
@@ -199,7 +206,7 @@ class Checkpoint(_Model):
 
 class TrainingParams(TypedDict, total=False):
     """The settings a job can change; the server fills in the rest."""
-    train_type: Literal["full", "lora"]
+    train_type: Literal["full", "lora", "grpo"]
     learning_rate: float
     num_train_epochs: int
     max_steps: int
@@ -211,6 +218,11 @@ class TrainingParams(TypedDict, total=False):
     seed: int
     val_dataset_id: str
     eval_steps: int
+    # grpo only: max_steps rounds of batch_size prompts, num_generations completions each
+    reward: Literal["boxed", "exact"]
+    num_generations: int
+    max_completion_length: int
+    temperature: float
 
 
 class Wandb(TypedDict, total=False):

@@ -26,7 +26,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `datasets.import_huggingface(url, config="default", split="train", name=None, hf_token=None)` | import one split; `importing` then `checking` |
 | `datasets.huggingface_splits(url, hf_token=None)` | `[{"config", "split", "rows", "bytes"}]` |
 | `datasets.wait(id, timeout=3600, poll_interval=5)` | until `ready` or `invalid` |
-| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source` (see data.md) |
+| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, or `rl` for prompts with answers) (see data.md) |
 | `datasets.download_url(id)` | a one-hour link to the file as training reads it |
 | `datasets.delete(id)` | refused (409) while an unfinished job uses it |
 
@@ -43,7 +43,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `jobs.wait(id, timeout=None, poll_interval=30)` | until training is over (`succeeded`, `failed`, `cancelled`); a failed job is returned, not raised |
 | `jobs.wait_checkpoint(id, timeout=None, poll_interval=60)` | until a succeeded job's checkpoint is uploaded; `NexTronError` if the job ended without one |
 | `jobs.logs(id, follow=False, poll_interval=10)` | iterator of `LogLine` (`seq`, `ts`, `line`) |
-| `jobs.metrics(id)` | `list[MetricPoint]`: `step`, `total_steps`, `loss`, `val_loss`, `lr`, `step_time_s`, `tokens_per_s_per_gpu`, `tokens_per_s_total`, `ts`, and `samples`, `real_tokens`, `trained_tokens`, `padding_tokens` (see monitoring.md) |
+| `jobs.metrics(id)` | `list[MetricPoint]`: `step`, `total_steps`, `loss`, `val_loss`, `lr`, `step_time_s`, `tokens_per_s_per_gpu`, `tokens_per_s_total`, `ts`, and `samples`, `real_tokens`, `trained_tokens`, `padding_tokens` (see monitoring.md); GRPO adds `reward_mean`, `zero_variance_fraction`, `completion_length_mean`, `generation_s`, `round_time_s` (rl.md) |
 | `jobs.cancel(id)` | queued: cancelled now; running: stops soon, no checkpoint |
 | `jobs.checkpoint(id)` | `Checkpoint`: `step`, `bytes`, `expires`, `files` (`name`, `bytes`, `sha256`, `url`) |
 | `jobs.download_checkpoint(id, dest, include=None)` | downloads into `dest` (only files matching the `include` globs), resumes partial files, checks each sha256; 409 while uploading |
@@ -76,7 +76,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 ```
 nextron-cloud me | models | layouts
 nextron-cloud datasets list [--sample] [--table [--model M]] | get ID | check PATH | upload PATH [--name N] | splits URL
-nextron-cloud datasets prepare PATH [--out-dir D] [--val-fraction F] [--seed S] [--prompt-column C ... --response-column C] [--system TEXT]
+nextron-cloud datasets prepare PATH [--out-dir D] [--val-fraction F] [--seed S] [--prompt-column C ... --response-column C | --answer-column C] [--system TEXT]
 nextron-cloud datasets import URL [--config C] [--split S] [--name N] | download-url ID | delete ID
 nextron-cloud jobs estimate --model M --dataset ID [--layout L] [--param KEY=VALUE ...]
 nextron-cloud jobs create   --model M --dataset ID [--layout L] [--param KEY=VALUE ...] [--yes]

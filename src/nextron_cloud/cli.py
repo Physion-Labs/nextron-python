@@ -180,10 +180,11 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--prompt-column", action="append", help="the user message's column (with --response-column); "
                      "repeat to join several, e.g. instruction and context")
     cmd.add_argument("--response-column", help="the assistant message's column")
+    cmd.add_argument("--answer-column", help="instead of --response-column: the answer's column, for RL (grpo) samples")
     cmd.add_argument("--system", help="a system message for every sample")
     cmd.set_defaults(run=None, local=lambda a: (prepare_file(
         a.path, a.out_dir, val_fraction=a.val_fraction, seed=a.seed, prompt_column=a.prompt_column,
-        response_column=a.response_column, system=a.system), 0))
+        response_column=a.response_column, answer_column=a.answer_column, system=a.system), 0))
     cmd = datasets.add_parser("upload", help="check, upload and wait for the server's check")
     cmd.add_argument("path")
     cmd.add_argument("--name")
@@ -271,7 +272,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _checked(result: Any) -> tuple[dict[str, Any], int]:
-    return {"ok": result.ok, "samples": result.samples, "chars": result.chars, "errors": result.errors}, 0 if result.ok else 1
+    return {"ok": result.ok, "kind": result.kind, "samples": result.samples, "chars": result.chars, "errors": result.errors}, 0 if result.ok else 1
 
 
 def main(argv: list[str] | None = None) -> None:

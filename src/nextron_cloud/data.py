@@ -16,6 +16,14 @@ At least one assistant message is needed, and a system message may only come fir
     "content": [{"type": "text", "text": ...}, ...]                                   OpenAI content parts, text only
 
 An optional top-level "system" or "system_prompt" string becomes the system message.
+
+Reinforcement learning (train_type "grpo") takes prompts with the answer the reward checks the model's reply against,
+one kind per file:
+
+    {"messages": [system?, user, ...], "answer": "..."}   the user's turn last
+    {"prompt": "...", "answer": "..."}
+
+A numeric answer is kept as its text.
 """
 from __future__ import annotations
 
@@ -97,16 +105,44 @@ def to_messages(sample: Any) -> list[Message]:
     return messages
 
 
+def is_rl(sample: Any) -> bool:
+    """Whether the sample is a prompt with an answer (reinforcement learning) rather than a chat to imitate."""
+    return isinstance(sample, dict) and "answer" in sample and ("messages" in sample or "prompt" in sample)
+
+
+def to_rl(sample: dict[str, Any]) -> dict[str, Any]:
+    """An RL sample as {"messages", "answer"}. ValueError says why it cannot be used."""
+    answer = sample["answer"]
+    if isinstance(answer, (int, float)) and not isinstance(answer, bool):  # math sets often store numbers
+        answer = str(answer)
+    if not isinstance(answer, str) or not answer.strip():
+        raise ValueError('needs a non-empty "answer" string: what the reward compares the model\'s output with')
+    if "messages" in sample:
+        source = sample["messages"]
+        if not isinstance(source, list) or not source or not isinstance(source[-1], dict) or source[-1].get("role") != "user":
+            raise ValueError("an RL sample's messages end with the user's turn: the model writes the reply")
+        chat = {**sample, "messages": source + [{"role": "assistant", "content": "-"}]}
+    else:
+        chat = {**sample, "completion": "-"}
+    # Checked as a chat with a placeholder reply, so prompts follow the same rules as chat samples.
+    return {"messages": to_messages(chat)[:-1], "answer": answer}
+
+
+def to_sample(sample: Any) -> dict[str, Any]:
+    """The sample as the server stores it: {"messages"} for a chat, {"messages", "answer"} for RL."""
+    return to_rl(sample) if is_rl(sample) else {"messages": to_messages(sample)}
+
+
 def write_jsonl(samples: Iterable[Any], path: str | os.PathLike[str]) -> int:
-    """Write samples in any format above as a "messages" JSONL file; returns how many. Raises on the first bad one."""
+    """Write samples in any format above as JSONL in the server's form; returns how many. Raises on the first bad one."""
     count = 0
     with Path(path).open("w", encoding="utf-8") as out:
         for number, sample in enumerate(samples, 1):
             try:
-                messages = to_messages(sample)
+                row = to_sample(sample)
             except ValueError as error:
                 raise ValueError(f"sample {number}: {error}") from None
-            out.write(json.dumps({"messages": messages}, ensure_ascii=False) + "\n")
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
             count += 1
     return count
 
@@ -116,6 +152,7 @@ class CheckResult:
     samples: int = 0
     chars: int = 0  # message text; a token is roughly 3-4 characters of English
     errors: list[str] = field(default_factory=list)
+    kind: str | None = None  # "chat", or "rl" for prompts with answers
 
     @property
     def ok(self) -> bool:
@@ -129,6 +166,7 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
     if path.stat().st_size > MAX_FILE_BYTES:
         result.errors.append(f"the file is over {MAX_FILE_BYTES // 1000**3} GB")
         return result
+    kinds = set()
     with path.open("rb") as f:
         for number, raw in enumerate(f, 1):
             if len(raw) > MAX_LINE_BYTES:
@@ -144,7 +182,7 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
             if not line:
                 continue
             try:
-                messages = to_messages(json.loads(line))
+                row = to_sample(json.loads(line))
             except json.JSONDecodeError as error:
                 _note(result, f"line {number}: not valid JSON ({error.msg})")
                 continue
@@ -152,9 +190,13 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                 _note(result, f"line {number}: {error}")
                 continue
             result.samples += 1
-            result.chars += sum(len(m["content"]) for m in messages)
+            result.chars += sum(len(m["content"]) for m in row["messages"])
+            kinds.add("rl" if "answer" in row else "chat")
     if not result.errors and not result.samples:
         result.errors.append("the file has no samples")
+    if len(kinds) > 1:
+        result.errors.append("the file mixes chat samples with prompts and answers (RL); a dataset holds one kind")
+    result.kind = kinds.pop() if len(kinds) == 1 else None
     return result
 
 
@@ -184,31 +226,33 @@ def read_rows(path: str | os.PathLike[str]) -> list[Any]:
 
 def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] = ".", *, val_fraction: float = 0.1,
                  seed: int = 0, prompt_column: str | list[str] | None = None, response_column: str | None = None,
-                 system: str | None = None) -> dict[str, Any]:
+                 answer_column: str | None = None, system: str | None = None) -> dict[str, Any]:
     """Convert a file to train.jsonl and val.jsonl in `out_dir`: rows in any accepted format, or user and assistant
-    columns (`prompt_column`, several joined by a blank line when non-empty; `response_column`), e.g. of a CSV. Rows that cannot be trained on are left out
-    and counted. Shuffled with `seed`; the validation set is `val_fraction` of the rows, at most 5,000."""
+    columns (`prompt_column`, several joined by a blank line when non-empty; `response_column`), e.g. of a CSV. With
+    `answer_column` instead of `response_column`, the rows become RL samples (prompt + answer). Rows that cannot be
+    trained on are left out and counted. Shuffled with `seed`; the validation set is `val_fraction` of the rows, at most 5,000."""
     import random
 
     if not 0 <= val_fraction < 1:
         raise ValueError("val_fraction must be at least 0 and below 1")
     rows = read_rows(path)
     prompt_columns = [prompt_column] if isinstance(prompt_column, str) else prompt_column or []
-    if prompt_columns and response_column and rows:
-        missing = [c for c in (*prompt_columns, response_column) if c not in rows[0]]
+    target_column = response_column or answer_column
+    if prompt_columns and target_column and rows:
+        missing = [c for c in (*prompt_columns, target_column) if c not in rows[0]]
         if missing:
             raise ValueError(f"{Path(path).name} has no column {', '.join(missing)}; it has {', '.join(rows[0])}")
     samples: list[dict[str, Any]] = []
     errors: list[str] = []
     skipped = 0
     for number, row in enumerate(rows, 1):
-        if prompt_columns and response_column:
+        if prompt_columns and target_column:
             prompt = "\n\n".join(str(row[c]) for c in prompt_columns if row[c])
-            row = {"prompt": prompt, "completion": row[response_column]}
+            row = {"prompt": prompt, "completion" if response_column else "answer": row[target_column]}
         if system:
             row = dict(row, system=system)
         try:
-            samples.append({"messages": to_messages(row)})
+            samples.append(to_sample(row))
         except ValueError as error:
             skipped += 1
             if len(errors) < MAX_ERRORS:

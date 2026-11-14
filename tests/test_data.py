@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from nextron_cloud import check_file, to_messages, write_jsonl
+from nextron_cloud.data import prepare_file, to_sample
 
 USER, ASSISTANT = {"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}
 
@@ -66,3 +67,21 @@ def test_prepare_file_names_a_missing_column(tmp_path: Path):
     csv_path.write_text("ticket,answer\nq,a\n")
     with pytest.raises(ValueError, match="no column reply; it has ticket, answer"):
         prepare_file(csv_path, tmp_path, prompt_column="ticket", response_column="reply")
+
+
+def test_rl_samples_keep_their_answer_and_a_file_holds_one_kind(tmp_path: Path):
+    assert to_sample({"prompt": "2+2?", "answer": 4}) == {"messages": [{"role": "user", "content": "2+2?"}], "answer": "4"}
+    assert to_sample({"question": "2+2?", "answer": "4"})["messages"][-1] == {"role": "assistant", "content": "4"}  # a chat pair
+    for bad in ({"prompt": "q", "answer": ""}, {"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}], "answer": "a"}):
+        with pytest.raises(ValueError):
+            to_sample(bad)
+    path = tmp_path / "rl.jsonl"
+    path.write_text(json.dumps({"prompt": "q", "answer": "a"}) + "\n")
+    assert (check_file(path).ok, check_file(path).kind) == (True, "rl")
+    path.write_text(json.dumps({"prompt": "q", "answer": "a"}) + "\n" + json.dumps({"prompt": "q", "completion": "a"}) + "\n")
+    assert "mixes" in check_file(path).errors[0]
+    csv = tmp_path / "math.csv"
+    csv.write_text("question,final\nwhat is 2+2,4\nwhat is 3+3,6\n")
+    report = prepare_file(csv, tmp_path / "out", val_fraction=0, prompt_column="question", answer_column="final")
+    answers = sorted(json.loads(line)["answer"] for line in Path(report["train"]["path"]).read_text().splitlines())
+    assert answers == ["4", "6"]

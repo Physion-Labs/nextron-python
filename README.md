@@ -34,8 +34,9 @@ Install, set the key, then paste this to your coding agent (Claude Code, Codex, 
 prepares the data and shows you the cost before it starts anything.
 
 ```text
-Run a fine-tuning experiment for me on NexTron Cloud, a managed training service: one request trains a model on
-its GPUs and leaves a checkpoint to download.
+Run a training experiment for me on NexTron Cloud, a managed training service: one request fine-tunes a model on
+its GPUs (on example replies, or with reinforcement learning against known answers) and leaves a checkpoint to
+download.
 
 Setup
 - Install the SDK with uv in this project: `uv venv && uv pip install --prerelease=allow nextron-cloud`
@@ -44,7 +45,8 @@ Setup
 - Source and docs: https://github.com/Physion-Labs/nextron-python
 - My API key is in the environment variable NEXTRON_API_KEY. Never print it or write it into a file.
 - Before anything else run `uv run nextron-cloud guide` and read all of it. At each step read its topic too:
-  `nextron-cloud guide data`, `... training`, `... monitoring`, `... checkpoints`, `... api`. Follow its rules.
+  `nextron-cloud guide data`, `... training`, `... rl`, `... monitoring`, `... checkpoints`, `... api`. Follow its
+  rules.
 
 The experiment
 - Model: ask me, or pick one from `nextron-cloud models` and tell me why.
@@ -52,19 +54,21 @@ The experiment
   model should do better; whether to train on my own data (a file or a Hugging Face link, and which fields are the
   input and which the answer) or on one of the sample datasets (`nextron-cloud datasets list --sample --table`);
   how I will judge the result; and my budget. Suggest answers where you can, e.g. a held-out split of my data
-  compared with the base model.
+  compared with the base model. If a reply can be checked against a known answer (math, multiple choice, short
+  exact answers), say whether reinforcement learning (`nextron-cloud guide rl`) fits better than example replies.
 - Spend at most the budget I give you unless I approve more.
 
 How to work
-- Prepare and check the data, hold out a validation set, upload, and plan a small first run.
+- Prepare and check the data, hold out a validation set, upload, and plan a small first run (for reinforcement
+  learning, 2-3 rounds to read the starting reward).
 - Before anything that costs money, show me the model, settings, estimated cost, steps, time and warnings, and
   how long the data is: its tokens and longest sample, the model's max_seq_len and how many samples would be
   truncated. Wait for my yes. Never start a job I have not approved.
 - Give every job a name and a tag for this experiment.
 - While jobs run, watch them (`nextron-cloud jobs progress` / `jobs events`) and tell me at once if one fails or
   stalls.
-- When training ends, report loss and validation loss, what was charged, what you conclude, and what you would try
-  next. Download checkpoints only when I ask.
+- When training ends, report loss and validation loss (reinforcement learning: the reward per round), what was
+  charged, what you conclude, and what you would try next. Download checkpoints only when I ask.
 - Keep everything you write in this project directory.
 ```
 
@@ -76,6 +80,7 @@ The guide is written for people and coding agents alike, in [skills/nextron-clou
 - [data.md](skills/nextron-cloud/references/data.md): the sample format, what training learns from, checks
 - [training.md](skills/nextron-cloud/references/training.md): models, params, batch, cost and time, sweeps
 - [monitoring.md](skills/nextron-cloud/references/monitoring.md): states, metrics, failures, API errors
+- [rl.md](skills/nextron-cloud/references/rl.md): reinforcement learning (GRPO) with built-in rewards
 - [checkpoints.md](skills/nextron-cloud/references/checkpoints.md): download, serve, evaluate
 - [api.md](skills/nextron-cloud/references/api.md): every SDK call and CLI command
 - [examples/compare_outputs.py](examples/compare_outputs.py): answer held-out prompts with the fine-tuned and the base

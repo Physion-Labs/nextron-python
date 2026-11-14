@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0rc3
+
+- The README's agent prompt covers reinforcement learning: when replies can be checked against known answers it
+  weighs GRPO, plans a 2-3 round first run, and reports the reward per round.
+- Reinforcement learning: `train_type="grpo"` with the `reward`, `num_generations`, `max_completion_length` and
+  `temperature` params; RL samples (prompt + answer) in `check_file`, `write_jsonl` and `datasets prepare --answer-column`;
+  `Dataset.kind`; per-round GRPO metrics. Guide: `nextron-cloud guide rl`.
+
 ## 0.1.0rc2
 
 - The README's agent prompt asks what you need instead of leaving brackets to fill, and links the source.
