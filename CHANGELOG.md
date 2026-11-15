@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc8
+
+- Inference guide: `stream=True` streams the answer as it is generated (no 100 s limit while it streams); a call
+  without it must finish in about 90 seconds.
+
 ## 0.1.0rc7
 
 - `LiveRun` keeps calling through a 500 while the API restarts (it repeated only 502-504), so an RL loop survives a
