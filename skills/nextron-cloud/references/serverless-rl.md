@@ -131,6 +131,7 @@ recipes (`nextron-cookbook run math`), measured results and the full compatibili
 | `--max-hours` | required | stops itself after this long; credits for it are held at the start |
 | `--max-context` | 16384 | tokens: a prompt with its reply, and a training sequence. Smaller leaves more memory for parallel sampling |
 | `--max-grad-norm` | 1.0 | gradient clipping for every optimizer step |
+| `--no-grad-clip` | clipping on | no gradient clipping (`grad_clip=False`). The optimizer then runs beside the backward pass and a step is about 2 s shorter; clipping is a guard against the rare very large gradient, so keep it on unless your runs are stable |
 | `--idle-timeout` | 1800 | seconds without a sample or a step before it stops |
 
 Per step, from your loop: Adam's `learning_rate`, `beta1`, `beta2`, `eps`, `weight_decay` and the loss

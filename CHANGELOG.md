@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0rc5
+
+- Serverless RL: `rl start --no-grad-clip` (`client.rl.start(grad_clip=False)`) starts a run without gradient clipping.
+
 ## 0.1.0rc4
 
 - Serverless RL: `client.rl` and `nextron-cloud rl start|wait|env|stop|list|get|metrics|rollouts`: an RL run is a

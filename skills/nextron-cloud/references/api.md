@@ -75,7 +75,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | does |
 |---|---|
 | `rl.estimate(model, max_hours)` | `RLEstimate`: `price_per_gpu_hour`, `gpus`, `price_per_hour` (the two multiplied), `credits` (held for `max_hours`), `balance`, `enough`; US cents |
-| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, idle_timeout=None, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL |
+| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, grad_clip=None, idle_timeout=None, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL |
 | `rl.connect(id, log_dir=None, log_groups=4)` | `LiveRun` on a ready run (context manager; keeps the run alive while open). `log_dir`: `metrics.jsonl` and `rollouts.jsonl` (the first `log_groups` groups of every step) are written there |
 | `live.sample(prompts, n=1, max_tokens=None, temperature=1.0, top_p=1.0, top_k=-1, stop=None, timeout=None)` | `SampleBatch`: `batch[i][j]` is a `Sample` (`id`, `text`, `finish_reason`, `tokens`); `generate_seconds`, `seconds`. A prompt is a string, a list of messages, or `{"messages", "tools"}` / `{"tokens"}` |
 | `live.train(batch, rewards, learning_rate=..., advantage="centered", loss="importance_sampling", clip_low=None, clip_high=None, substeps=1, beta1=None, beta2=None, eps=None, weight_decay=None, timeout=None)` | one training call; `rewards` has the batch's shape. Or `episodes=[Episode(samples, reward, group=None)]` for conversations. `TrainStep`, the step's record: `step`, `reward_mean`, `reward_std`, `groups`, `zero_variance_fraction`, `all_best_fraction`, `all_worst_fraction`, `replies`, `completion_length_mean`, `truncated_fraction`, `kl_sample_train`, `step_s`, `generation_s`, `train_s`, `client_s`, `session_s`, `tokens`, `tokens_per_s_per_gpu`, `rows`, `row_tokens`, `row_fill`, `seconds` |
@@ -105,7 +105,7 @@ nextron-cloud jobs list [--tag T] | get ID | wait ID | progress ID | billing ID 
 nextron-cloud jobs events ID [--after SEQ] [--follow] [--until training|checkpoint]
 nextron-cloud jobs serve-rewards ID FILE.py:FUNCTION     # remote-reward GRPO: score until training is over
 nextron-cloud jobs wait-checkpoint ID | checkpoint ID | download ID DEST [--include GLOB ...] | export ID DEST
-nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-norm G] [--idle-timeout S]
+nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-norm G] [--no-grad-clip] [--idle-timeout S]
                        [--name N] [--tag T ...] [--yes]
 nextron-cloud rl list | get ID | wait ID [--timeout S] | env ID | stop ID [--wait]   # env: shell lines for eval, without the key
 nextron-cloud rl metrics ID | rollouts ID [--step N]

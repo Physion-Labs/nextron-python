@@ -146,7 +146,8 @@ def _rl_start(client: NexTron, args: argparse.Namespace) -> Any:
                 "next": "show the cost to the owner; rerun with --yes to start the RL run"})
         sys.exit(3)
     return client.rl.start(model=args.model, max_hours=args.max_hours, max_context=args.max_context,
-                           max_grad_norm=args.max_grad_norm, idle_timeout=args.idle_timeout, name=args.name, tags=args.tag)
+                           max_grad_norm=args.max_grad_norm, grad_clip=False if args.no_grad_clip else None,
+                           idle_timeout=args.idle_timeout, name=args.name, tags=args.tag)
 
 
 def _rl_wait(client: NexTron, args: argparse.Namespace) -> Any:
@@ -311,6 +312,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--max-hours", type=float, required=True, help="the run stops itself after this long")
     cmd.add_argument("--max-context", type=int, help="tokens: a prompt with its reply, and a training sequence (default 16384)")
     cmd.add_argument("--max-grad-norm", type=float, help="gradient clipping for every step (default 1.0)")
+    cmd.add_argument("--no-grad-clip", action="store_true", help="no gradient clipping: a step is about 2 s shorter")
     cmd.add_argument("--idle-timeout", type=int, help="seconds without a sample or a step before it stops (default 1800)")
     cmd.add_argument("--name", help="your label for the run")
     cmd.add_argument("--tag", action="append", help="a tag; repeat")
