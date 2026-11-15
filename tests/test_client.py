@@ -382,3 +382,20 @@ def test_an_inference_run_serves_a_jobs_model_and_samples_through_its_own_path(m
     with client.inference.connect("inf_1") as live:
         assert live.sample(["hi"])[0][0].text == "hello"
     assert client.inference.openai_base_url("inf_1") == "https://api.test/v1/inference/inf_1/v1"
+
+
+def test_a_live_run_keeps_polling_through_a_restart_of_the_api(make_client):
+    answers = iter([httpx.Response(500, json={"error": "internal_error"}), httpx.Response(503),
+                    httpx.Response(200, json={"done": True, "finished": 1, "prompts": 1, "samples": [[
+                        {"id": "b1:0:0", "text": "hi", "finish_reason": "stop", "tokens": 1}]]})])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/sample"):
+            return httpx.Response(200, json={"batch": "b1", "prompts": 1})
+        if request.url.path.endswith("/batches/b1") and "wait" in request.url.query.decode():
+            return next(answers)
+        return httpx.Response(200, json={"done": True, "finished": 1, "prompts": 1, "samples": [[
+            {"id": "b1:0:0", "text": "hi", "finish_reason": "stop", "tokens": 1}]]})
+
+    with make_client(handler).rl.connect("rl_1") as live:
+        assert live.sample(["hello"])[0][0].text == "hi"

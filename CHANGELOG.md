@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0rc7
+
+- `LiveRun` keeps calling through a 500 while the API restarts (it repeated only 502-504), so an RL loop survives a
+  deploy of the service.
+- Inference: a sample keeps a reasoning model's reasoning apart (`Sample.reasoning`, Muse-Glimmer).
+
 ## 0.1.0rc6
 
 - Inference: `client.inference` and `nextron-cloud inference start|wait|url|stop|list|get` serve the model of a

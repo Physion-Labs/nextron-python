@@ -174,6 +174,7 @@ class Sample(_Model):
     finish_reason: str  # "stop" or "length"
     tokens: int  # how many it has
     token_ids: list[int] | None = None
+    reasoning: str | None = None  # an inference run of a model that reasons before it answers (Muse-Glimmer): `text` is the answer
 
 
 class SampleBatch(_Model):

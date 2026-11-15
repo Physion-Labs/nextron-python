@@ -39,6 +39,8 @@ reply = llm.chat.completions.create(model="any", messages=[{"role": "user", "con
 - `chat/completions`, `completions` and `models`; any `model` name means the run's model.
 - Chat prompts render with thinking off, as jobs train (data.md). Ask for it with
   `extra_body={"chat_template_kwargs": {"enable_thinking": True}}`.
+- A model that reasons before it answers (`muse-glimmer-30b`) returns the answer as the content and the reasoning
+  apart: `reasoning_content` in a chat completion, `reasoning` on a sample. Give `max_tokens` room for both.
 - `stream=True` works, but the answer arrives whole at the end.
 - Through the public API one call must finish in about 90 seconds: keep `max_tokens` moderate, and send large
   batches with `connect` instead (it polls, so it has no such limit).

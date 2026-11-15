@@ -68,13 +68,14 @@ class LiveRun:
                 pass  # a missed beat is fine; three minutes of them stop the run
 
     def _call(self, method: str, path: str, body: Any = None) -> Any:
-        """One call to the run, repeated through a short outage (a restart of the API answers 502-504)."""
+        """One call to the run, repeated through a short outage: a restart of the API answers 500 or 502-504. Repeating
+        is safe: a sample or train call carries its key."""
         deadline = time.monotonic() + OUTAGE_SECONDS
         while True:
             try:
                 return self._client._request(method, self._base + path, json=body, headers=self._headers, retry=False).json()
             except (APIError, httpx.TransportError) as error:
-                gone = isinstance(error, APIError) and error.status_code not in (502, 503, 504)
+                gone = isinstance(error, APIError) and error.status_code not in (500, 502, 503, 504)
                 if gone or time.monotonic() > deadline:
                     raise
                 time.sleep(2)
