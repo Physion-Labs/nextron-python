@@ -158,7 +158,7 @@ def _rl_wait(client: NexTron, args: argparse.Namespace) -> Any:
         elapsed = time.monotonic() - started
         if elapsed - shown[0] >= 60:
             shown[0] = elapsed
-            print(f"{run.state}, {elapsed:.0f} s (loading the model takes 6-8 minutes)", file=sys.stderr, flush=True)
+            print(f"{run.state}, {elapsed:.0f} s (loading the model takes 6-8 minutes, about 20 for a two-node model)", file=sys.stderr, flush=True)
     return client.rl.wait(args.run_id, timeout=args.timeout, on_poll=progress)
 
 
@@ -167,6 +167,31 @@ def _rl_env(client: NexTron, args: argparse.Namespace) -> None:
     url = client.rl.env(args.run_id)["TINKER_BASE_URL"]
     print(f"export TINKER_BASE_URL={url}")
     print('export TINKER_API_KEY="tml-$NEXTRON_API_KEY"')
+
+
+def _inference_start(client: NexTron, args: argparse.Namespace) -> Any:
+    if not args.yes:
+        estimate = client.inference.estimate(job_id=args.job, max_hours=args.max_hours)
+        price = None
+        if estimate.price_per_gpu_hour is not None:
+            price = f"${estimate.price_per_gpu_hour / 100:.2f} per H100-hour ({estimate.gpus} GPUs)"
+        _print({"price": price, "estimate": estimate.model_dump(mode="json"), "created": False,
+                "next": "show the cost to the owner; rerun with --yes to start the inference run"})
+        sys.exit(3)
+    return client.inference.start(job_id=args.job, max_hours=args.max_hours, idle_timeout=args.idle_timeout,
+                                  name=args.name, tags=args.tag)
+
+
+def _inference_wait(client: NexTron, args: argparse.Namespace) -> Any:
+    """Progress goes to stderr about once a minute; the ready run to stdout."""
+    started, shown = time.monotonic(), [0.0]
+
+    def progress(run: Any) -> None:
+        elapsed = time.monotonic() - started
+        if elapsed - shown[0] >= 60:
+            shown[0] = elapsed
+            print(f"{run.state}, {elapsed:.0f} s (loading the model takes about 8 minutes)", file=sys.stderr, flush=True)
+    return client.inference.wait(args.run_id, timeout=args.timeout, on_poll=progress)
 
 
 def _guide_dir() -> Path:
@@ -326,7 +351,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("run_id")
     cmd.add_argument("--step", type=int, help="the training call; the latest without")
     cmd.set_defaults(run=lambda c, a: c.rl.rollouts(a.run_id, step=a.step))
-    cmd = rl.add_parser("wait", help="until the model is loaded, 6-8 minutes: progress on stderr, then the run")
+    cmd = rl.add_parser("wait", help="until the model is loaded (6-8 minutes; about 20 for qwen3.8-next-180b): progress on stderr, then the run")
     cmd.add_argument("run_id")
     cmd.add_argument("--timeout", type=float, help="give up after this many seconds (the run goes on)")
     cmd.set_defaults(run=_rl_wait)
@@ -337,6 +362,31 @@ def _parser() -> argparse.ArgumentParser:
     for name, run, text in (("get", lambda c, a: c.rl.get(a.run_id), None),
                             ("env", _rl_env, 'TINKER_BASE_URL and TINKER_API_KEY for the tinker SDK: eval "$(... env ID)"')):
         cmd = rl.add_parser(name, help=text)
+        cmd.add_argument("run_id")
+        cmd.set_defaults(run=run)
+
+    inference = groups.add_parser("inference", help="serve a trained job's model on NexTron's GPUs and call it").add_subparsers(dest="cmd", required=True)
+    cmd = inference.add_parser("start", help="price for --max-hours, then start with --yes")
+    cmd.add_argument("--job", required=True, help="a training job that succeeded in the last 7 days")
+    cmd.add_argument("--max-hours", type=float, required=True, help="the run stops itself after this long")
+    cmd.add_argument("--idle-timeout", type=int, help="seconds without a request before it stops (default 1800)")
+    cmd.add_argument("--name", help="your label for the run")
+    cmd.add_argument("--tag", action="append", help="a tag; repeat")
+    cmd.add_argument("--yes", action="store_true", help="start the run; without it only the price is printed")
+    cmd.set_defaults(run=_inference_start)
+    inference.add_parser("list").set_defaults(run=lambda c, a: c.inference.list())
+    cmd = inference.add_parser("wait", help="until the model is loaded, about 8 minutes: progress on stderr, then the run")
+    cmd.add_argument("run_id")
+    cmd.add_argument("--timeout", type=float, help="give up after this many seconds (the run goes on)")
+    cmd.set_defaults(run=_inference_wait)
+    cmd = inference.add_parser("stop", help="stop billing; the GPUs are released about a minute later")
+    cmd.add_argument("run_id")
+    cmd.add_argument("--wait", action="store_true", help="return once it is closed")
+    cmd.set_defaults(run=lambda c, a: c.inference.stop(a.run_id, wait=a.wait))
+    for name, run, text in (("get", lambda c, a: c.inference.get(a.run_id), None),
+                            ("url", lambda c, a: {"openai_base_url": c.inference.openai_base_url(a.run_id)},
+                             "the base URL for an OpenAI client; its api_key is your NexTron key")):
+        cmd = inference.add_parser(name, help=text)
         cmd.add_argument("run_id")
         cmd.set_defaults(run=run)
 

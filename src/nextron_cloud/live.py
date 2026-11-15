@@ -37,13 +37,13 @@ class LiveRun:
     read what the model wrote at any step."""
 
     def __init__(self, client: NexTron, run_id: str, *, heartbeat: float = 20.0, log_dir: str | Path | None = None,
-                 log_groups: int = 4):
+                 log_groups: int = 4, base: str | None = None):
         self._client, self.id = client, run_id
         self._log_dir, self._log_groups = Path(log_dir) if log_dir else None, log_groups
         self._prompts: dict[str, dict[str, Any]] = {}  # "batch:index" -> the prompt, until the next training call
         if self._log_dir:
             self._log_dir.mkdir(parents=True, exist_ok=True)
-        self._base = f"/v1/training/sessions/{run_id}/tinker/nextron/v1"
+        self._base = base or f"/v1/training/sessions/{run_id}/tinker/nextron/v1"   # an inference run's is under /v1/inference
         self._headers = {"X-API-Key": f"tml-{client._api_key}"}
         self._stop = threading.Event()
         self._call("POST", "/heartbeat")  # fails here if the run is not ready or is a tinker client's

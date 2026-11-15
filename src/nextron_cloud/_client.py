@@ -64,10 +64,12 @@ class NexTron:
 
         from .datasets import Datasets
         from .jobs import Jobs
+        from .inference import Inference
         from .rl import RL
         self.datasets = Datasets(self)
         self.jobs = Jobs(self)
         self.rl = RL(self)
+        self.inference = Inference(self)
 
     def me(self) -> Account:
         """The account the key belongs to, with its balance and the price list."""

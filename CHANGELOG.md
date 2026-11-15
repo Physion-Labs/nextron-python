@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0rc6
+
+- Inference: `client.inference` and `nextron-cloud inference start|wait|url|stop|list|get` serve the model of a
+  training job that succeeded in the last 7 days, on the GPUs that trained it, billed by time. Call it with
+  `client.inference.connect(id).sample(...)` (a batch of prompts in one call) or any OpenAI client
+  (`client.inference.openai_base_url(id)`, your NexTron key). `nextron-cloud guide inference`.
+- Serverless RL: `qwen3.8-next-180b` (two nodes); the load-time texts say about 20 minutes for it.
+
 ## 0.1.0rc5
 
 - Serverless RL: `rl start --no-grad-clip` (`client.rl.start(grad_clip=False)`) starts a run without gradient clipping.

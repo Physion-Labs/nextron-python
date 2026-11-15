@@ -87,10 +87,20 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `rl.env(id)` | `{"TINKER_BASE_URL", "TINKER_API_KEY"}` for the `tinker` SDK; the second holds your key |
 | `rl.stop(id, wait=False)` | billing stops, state `closing`; `wait=True` returns at `closed`. The model is saved if it trained a step (then `jobs.wait_checkpoint(id)`, `jobs.download_checkpoint(id, dest)`) |
 
+## Inference
+
+| Call | Returns |
+|---|---|
+| `inference.estimate(job_id, max_hours)` | `RLEstimate`: `price_per_gpu_hour`, `gpus`, `price_per_hour`, `credits` (held for `max_hours`), `balance`, `enough`; US cents |
+| `inference.start(job_id, max_hours, idle_timeout=None, name=None, tags=None)` | `InferenceRun` in `queued` (the fields of `RLRun`; `params.job_id`); 422 for a job that did not succeed or a model without inference, 410 for a job that finished more than 7 days ago |
+| `inference.get(id)`, `inference.list()`, `inference.wait(id, timeout=None, poll_interval=15, on_poll=None)`, `inference.stop(id, wait=False)` | as for RL runs |
+| `inference.connect(id)` | `LiveRun` with `sample` (no `train`) |
+| `inference.openai_base_url(id)` | the base URL for an OpenAI client; `api_key` is your NexTron key |
+
 ## CLI
 
 `nextron-cloud` prints JSON and exits 0 on success, 1 on an error (`{"error", "status", "message"}`), 3 when
-`jobs create`, `rl start` or `sweep` printed estimates instead of starting.
+`jobs create`, `rl start`, `inference start` or `sweep` printed estimates instead of starting.
 
 ```
 nextron-cloud me | models | layouts
@@ -109,6 +119,8 @@ nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-nor
                        [--name N] [--tag T ...] [--yes]
 nextron-cloud rl list | get ID | wait ID [--timeout S] | env ID | stop ID [--wait]   # env: shell lines for eval, without the key
 nextron-cloud rl metrics ID | rollouts ID [--step N]
+nextron-cloud inference start --job JOB_ID --max-hours H [--idle-timeout S] [--name N] [--tag T ...] [--yes]
+nextron-cloud inference list | get ID | wait ID [--timeout S] | url ID | stop ID [--wait]   # url: an OpenAI client's base URL
 nextron-cloud sweep --name N --model M --dataset ID [--layout L] [--param KEY=VALUE ...] --grid KEY=V1,V2 [...] [--yes]
 nextron-cloud report [JOB_ID ...] [--tag T] [--table]
 ```

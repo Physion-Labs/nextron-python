@@ -29,6 +29,7 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 | download, serve and evaluate the checkpoint | [references/checkpoints.md](references/checkpoints.md) |
 | managed reinforcement learning (a GRPO job): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
 | Serverless RL: your own RL loop (this SDK's `sample` / `train`, or the tinker SDK) on NexTron's GPUs, billed by time | [references/serverless-rl.md](references/serverless-rl.md) |
+| try a trained model right after training, without downloading it: an inference run, called with this SDK or an OpenAI client | [references/inference.md](references/inference.md) |
 | every SDK call and CLI command | [references/api.md](references/api.md) |
 
 ## Setup

@@ -22,15 +22,18 @@ A model that has Serverless RL lists `interactive` under its methods in `nextron
 ```bash
 nextron-cloud rl start --model qwen3.8-27b --max-hours 2                   # the price only: exits 3, starts nothing
 nextron-cloud rl start --model qwen3.8-27b --max-hours 2 --yes             # after the owner agreed
-nextron-cloud rl wait rl_...                                               # 6-8 minutes; progress on stderr
+nextron-cloud rl wait rl_...                                               # 6-8 minutes (about 20 for qwen3.8-next-180b); progress on stderr
 ...                                                                        # your loop, one of the two ways below
 nextron-cloud rl stop rl_... --wait                                        # stop billing; returns when the GPUs are released
 ```
 
-An RL run is priced per GPU-hour, by the kind of GPU: `rl start` without `--yes` prints it, e.g. $3.00 per H100-hour
-for a run of 8 GPUs. Numbers are US cents: `price_per_gpu_hour` 300, `gpus` 8, and `credits` is what is held for
-`--max-hours` (300 x 8 x hours). You pay for `billable_seconds` on all of the run's GPUs; the rest of the hold is
+An RL run is priced per GPU-hour, by the kind of GPU: `rl start` without `--yes` prints it, e.g. $3.50 per H100-hour
+for a run of 8 GPUs. Numbers are US cents: `price_per_gpu_hour` 350, `gpus` 8, and `credits` is what is held for
+`--max-hours` (350 x 8 x hours). You pay for `billable_seconds` on all of the run's GPUs; the rest of the hold is
 released.
+
+`qwen3.8-next-180b` runs on two nodes (16 GPUs, so twice the price an hour). Its model takes about 20 minutes to load,
+and when the run stops it saves a 611 GB checkpoint for about 15 minutes in `closing` (not billed).
 
 ## Your loop with this SDK: sample, score, train
 
@@ -139,7 +142,7 @@ Per step, from your loop: Adam's `learning_rate`, `beta1`, `beta2`, `eps`, `weig
 
 ## States and the trained model
 
-`queued` -> `starting` (the model loads, 6-8 minutes; not billed) -> `ready` -> `closing` (not billed) -> `closed`, or
+`queued` -> `starting` (the model loads, 6-8 minutes, about 20 for qwen3.8-next-180b; not billed) -> `ready` -> `closing` (not billed) -> `closed`, or
 `failed`. `rl get` shows `billable_seconds`. A failed run is not charged.
 
 Two kinds of id appear: `rl_...` is the RL run, for every `nextron-cloud` command. The `tinker` SDK prints its own

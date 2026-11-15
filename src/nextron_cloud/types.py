@@ -163,6 +163,10 @@ class RLRun(_Model):
         return self.state in ("closed", "failed")
 
 
+class InferenceRun(RLRun):
+    """A training job's model served for inference: `params` holds `job_id`, `max_hours`, `idle_timeout`."""
+
+
 class Sample(_Model):
     """One sampled reply of an RL run. Its tokens and logprobs stay with the run: train by handing it back."""
     id: str

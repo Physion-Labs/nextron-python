@@ -351,3 +351,34 @@ def test_an_rl_runs_rollouts_show_a_training_calls_best_and_worst_group(make_cli
 
     shown = make_client(handler).rl.rollouts("rl_1", step=2)
     assert asked == ["/v1/training/sessions/rl_1/rollouts?step=2"] and (shown.steps, shown.groups[0]["episodes"][0]["turns"][0]["reply"]) == ([1, 2], "4")
+
+
+def test_an_inference_run_serves_a_jobs_model_and_samples_through_its_own_path(make_client, monkeypatch, capsys):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        run = {"id": "inf_1", "state": "ready", "model": "qwen3.8-27b", "params": {"job_id": "job_1", "max_hours": 1},
+               "created": 1.0, "updated": 1.0}
+        if request.url.path == "/v1/inference/estimate":
+            return httpx.Response(200, json={"price_per_gpu_hour": 350, "gpus": 8, "price_per_hour": 2800, "credits": 2800,
+                                             "balance": 10000, "enough": True})
+        if request.url.path == "/v1/inference/inf_1/nextron/v1/sample":
+            return httpx.Response(200, json={"batch": "b1", "prompts": 1})
+        if request.url.path == "/v1/inference/inf_1/nextron/v1/batches/b1":
+            return httpx.Response(200, json={"done": True, "finished": 1, "prompts": 1, "samples": [[
+                {"id": "b1:0:0", "text": "hello", "finish_reason": "stop", "tokens": 2}]]})
+        return httpx.Response(200, json=run if request.url.path.startswith("/v1/inference") else {})
+
+    from nextron_cloud.cli import main
+    client = make_client(handler)
+    monkeypatch.setenv("NEXTRON_API_KEY", "nk_test")
+    monkeypatch.setenv("NEXTRON_BASE_URL", "https://api.test")
+    with pytest.raises(SystemExit) as stopped:   # without --yes: the price only
+        main(["inference", "start", "--job", "job_1", "--max-hours", "1"])
+    assert stopped.value.code == 3 and json.loads(capsys.readouterr().out)["price"] == "$3.50 per H100-hour (8 GPUs)"
+    run = client.inference.start(job_id="job_1", max_hours=1)
+    assert (run.id, run.params["job_id"]) == ("inf_1", "job_1") and ("POST", "/v1/inference") in seen
+    with client.inference.connect("inf_1") as live:
+        assert live.sample(["hi"])[0][0].text == "hello"
+    assert client.inference.openai_base_url("inf_1") == "https://api.test/v1/inference/inf_1/v1"

@@ -46,7 +46,7 @@ class RL:
 
     def wait(self, run_id: str, *, timeout: float | None = None, poll_interval: float = 15,
              on_poll: Callable[[RLRun], None] | None = None) -> RLRun:
-        """Wait until the run is ready (its model is loaded, 6-8 minutes). NexTronError if it ended instead.
+        """Wait until the run is ready (its model is loaded: 6-8 minutes, about 20 for qwen3.8-next-180b). NexTronError if it ended instead.
         `on_poll` sees every poll's run, e.g. to print progress."""
         def get() -> RLRun:
             run = self.get(run_id)
