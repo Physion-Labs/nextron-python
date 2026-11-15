@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0rc4
+
+- Serverless RL: `client.rl` and `nextron-cloud rl start|wait|env|stop|list|get|metrics|rollouts`: an RL run is a
+  loaded model your own loop samples from and trains. `client.rl.connect(id)` drives one with NexTron's own
+  calls (`sample` a batch of chat prompts, `train` on a reward per reply or per conversation); it also serves Tinker's
+  API for the `tinker` SDK and tinker-cookbook. Every training call returns its record (reward statistics, the time
+  split into sampling, training and waiting for your code, how full the trainer's rows were), and
+  `rl.metrics(id)` lists them; `rl.rollouts(id)` shows what the model wrote in a call (its best and worst group).
+  `nextron-cloud guide serverless-rl`.
+- Your own reward for a managed GRPO job (client side only; the service does not take `reward="remote"` yet):
+  `jobs.serve_rewards` (CLI `jobs serve-rewards FILE.py:FUNCTION`), `jobs.rollouts`, `jobs.score`; RL samples keep an
+  optional `metadata` value for it.
+
 ## 0.1.0rc3
 
 - The README's agent prompt covers reinforcement learning: when replies can be checked against known answers it

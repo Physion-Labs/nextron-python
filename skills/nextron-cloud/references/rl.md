@@ -1,12 +1,17 @@
-# Reinforcement learning (GRPO)
+# Managed reinforcement learning (GRPO)
+
+This page is about a managed GRPO job: NexTron runs the loop and a built-in reward scores the replies. To run your
+own loop with your own reward code, environments or tools, use Serverless RL
+([serverless-rl.md](serverless-rl.md), `nextron-cloud rl ...`).
 
 A GRPO job trains on prompts, not on replies to copy. Each round it takes `batch_size` prompts, the model writes
-`num_generations` replies to each, a built-in reward scores every reply 1 or 0 against the prompt's answer, and the model
-learns from the difference between better and worse replies to the same prompt. Full-parameter only. The models that
+`num_generations` replies to each, a reward scores every reply, and the model learns from the difference between better
+and worse replies to the same prompt. Full-parameter only. The models that
 train it list `grpo` in `client.models()[i].methods`; use the job's `train_type="grpo"`.
 
-Your own reward code does not run on NexTron Cloud. Pick the built-in reward that fits, and phrase the prompts so the
-model answers in the form it checks.
+The reward is built in (`boxed`, `exact`: 1 or 0 against the prompt's answer), or your own code (`remote`): NexTron
+Cloud generates and trains, and each round's replies come to a script you run, which sends back their scores. Your code
+runs on your machine, never on NexTron Cloud.
 
 ## Data
 
@@ -30,14 +35,42 @@ One kind per dataset: prompts with answers.
 |---|---|
 | `boxed` | the last `\boxed{...}` in it equals the answer: numbers compared as numbers (`1,000` = `1000`), a single option letter ignoring case, other text ignoring case and `$`. Ask for `\boxed{}` in the prompt. |
 | `exact` | the whole reply, trimmed, equals the answer. Ask for the answer alone in the prompt. |
+| `remote` | your function says so: any score, from tests, a judge model or anything else (below). |
 
 The model answers in non-thinking mode (no `<think>` block), as in SFT.
+
+## Your own reward (`remote`)
+
+Not on the service yet: a model lists the rewards it takes in `client.models()[i].methods["grpo"].rewards`. Until
+`remote` is there, your own reward code runs with Serverless RL ([serverless-rl.md](serverless-rl.md)).
+
+Start the job with `reward="remote"`, then run your scorer until the job ends:
+
+```python
+def reward(item):                      # one reply; return a float (higher is better)
+    tests = item["metadata"]["tests"]  # item: messages (the prompt), completion, row, answer, metadata
+    return passed(item["completion"], tests) / len(tests)
+
+client.jobs.serve_rewards(job.id, reward)      # blocks; returns when training is over
+```
+
+or `nextron-cloud jobs serve-rewards job_... reward.py:reward`. Put what the scorer needs in each sample's `answer` and
+optional `metadata` (any JSON: test cases, a rubric); `row` is the sample's position in the dataset.
+
+- Each round waits for all its scores. A round without them for 10 minutes fails the job, and no checkpoint is saved:
+  start the scorer right after creating the job and keep it running. The time your scorer takes adds to every
+  round; score in parallel (threads, a pool) when it is slow.
+- Replies arrive in batches, one per GPU per round (`jobs.rollouts(id)` lists those waiting, `jobs.score(id, batch,
+  scores)` answers one: what `serve_rewards` does). Scores must be finite, one per reply, in order.
+- Run untrusted model output (generated code) in a sandbox on your side.
+- Scores of any scale work: GRPO compares the replies to the same prompt. The `reward_mean` metric is the mean of your
+  scores.
 
 ## Params
 
 | key | default | allowed / notes |
 |---|---|---|
-| `reward` | required | `"boxed"`, `"exact"` |
+| `reward` | required | `"boxed"`, `"exact"`, `"remote"` |
 | `max_steps` | required | rounds; one optimizer step each |
 | `batch_size` | 64 | prompts a round, a multiple of 8, at most 256 |
 | `num_generations` | 8 | replies per prompt, 2-16 |

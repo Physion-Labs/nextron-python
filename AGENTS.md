@@ -9,7 +9,7 @@ nextron-cloud` in a uv project; `uv sync` in a clone of this repository), then r
 **Working on this repository:**
 
 - Layout: `src/nextron_cloud/`: `_client.py` (HTTP, retries, errors, `me`/`models`/`layouts`), `datasets.py`,
-  `jobs.py`, `data.py` (sample format, local check, `prepare_file`), `experiments.py` (sweep, report), `types.py`
+  `jobs.py`, `rl.py` (Serverless RL: `client.rl`), `live.py` (an RL run's `sample` / `train` calls), `data.py` (sample format, local check, `prepare_file`), `experiments.py` (sweep, report), `types.py`
   (response models; unknown fields are kept), `cli.py` (`nextron-cloud`). `examples/`: scripts outside the package.
 - Checks: `uv run pytest`, `uv run mypy`. Against a live deployment, with a key: `uv run python scripts/verify_live.py`
   (reads, an estimate, two dataset uploads that it deletes; starts no job).

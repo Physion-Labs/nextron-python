@@ -1,6 +1,8 @@
 """Response models. Unknown fields are kept, so a newer server does not break an older client."""
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -8,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, computed_field
 JobState = Literal["queued", "submitting", "pending", "running", "succeeded", "failed", "cancelled"]
 DatasetState = Literal["uploading", "importing", "checking", "ready", "invalid", "deleted"]
 JOB_DONE = ("succeeded", "failed", "cancelled")
+RLRunState = Literal["queued", "starting", "ready", "closing", "closed", "failed"]
 DATASET_DONE = ("ready", "invalid", "deleted")
 
 
@@ -44,6 +47,7 @@ class ModelMethod(_Model):
     max_seq_len: int  # the longest sample a job of this method trains
     layouts: list[str]  # the GPU setups it trains on, in the order `layout="auto"` tries them
     price_per_mtok: int | None = None  # US cents per million tokens trained; None: not charged
+    price_per_gpu_hour: int | None = None  # the interactive method (Serverless RL): US cents per GPU-hour
 
 
 class ModelLayout(_Model):
@@ -136,6 +140,141 @@ class Estimate(_Model):
     truncated_samples: int | None = None
 
 
+class RLRun(_Model):
+    id: str
+    state: RLRunState
+    model: str
+    params: dict[str, Any]  # max_hours, max_context, max_grad_norm, idle_timeout
+    created: float
+    updated: float
+    ready: float | None = None  # when its model was loaded: billing starts here
+    billable_seconds: int = 0  # ready until it began to close, or to now
+    close_requested: bool = False
+    checkpoint: dict[str, Any] | None = None  # the trained model, once the run has stopped
+    price_per_hour: int | None = None  # US cents for all of its GPUs: billable_seconds x price_per_hour / 3600 is the cost so far
+    gpus: int | None = None
+    error: str | None = None
+    name: str | None = None
+    tags: list[str] = []
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def done(self) -> bool:
+        return self.state in ("closed", "failed")
+
+
+class Sample(_Model):
+    """One sampled reply of an RL run. Its tokens and logprobs stay with the run: train by handing it back."""
+    id: str
+    text: str | None = None
+    finish_reason: str  # "stop" or "length"
+    tokens: int  # how many it has
+    token_ids: list[int] | None = None
+
+
+class SampleBatch(_Model):
+    """The replies of one `sample` call, grouped by prompt in the order given: `batch[i][j]`."""
+    id: str
+    samples: list[list[Sample]]
+    generate_seconds: float | None = None  # on the run's GPUs
+    seconds: float  # the whole call, as the client saw it
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int) -> list[Sample]:
+        return self.samples[index]
+
+    def __iter__(self) -> Iterator[list[Sample]]:  # type: ignore[override]
+        return iter(self.samples)
+
+
+@dataclass
+class Episode:
+    """What one reward belongs to: one reply, or the replies of a conversation in turn order. `group` names the
+    episodes its reward is compared with; without it, the replies to the same prompt."""
+    samples: Sequence[Sample | str]
+    reward: float
+    group: str | None = None
+
+
+class TrainStep(_Model):
+    """One `train` call: what the step cost and how it went. The same record is a point of the run's metrics
+    (`client.rl.metrics(run_id)`)."""
+    step: int  # the run's training calls so far
+    episodes: int
+    optimizer_steps: int
+    reward_mean: float
+    reward_std: float
+    groups: int
+    zero_variance_fraction: float  # groups whose episodes all got the same reward: they teach nothing
+    all_best_fraction: float  # of all groups, those stuck at the step's highest reward ...
+    all_worst_fraction: float  # ... and at its lowest
+    replies: int  # sampled since the last training call
+    completion_length_mean: float | None = None  # tokens per reply
+    truncated_fraction: float | None = None  # replies stopped by max_tokens
+    trained_tokens: int  # sampled tokens the loss was taken on
+    kl_sample_train: float  # the sampler's logprob minus the trained model's, mean over them: near 0 when the two agree
+    idle_s: float | None = None  # before the step: since the model was loaded or the last training call ended
+    step_s: float  # from the step's first sample request to the end of its training, on the run's clock
+    generation_s: float  # of it, sampling
+    train_s: float  # of it, training
+    client_s: float  # of it, the run waiting for you: scoring, the network
+    session_s: float  # since the model was loaded: about what is billed so far
+    tokens: int | None = None  # all tokens of the trained sequences, prompts included
+    tokens_per_s_per_gpu: float | None = None
+    gpus: int | None = None
+    rows: int | None = None  # packed rows each GPU ran in this call
+    row_tokens: int | None = None  # the most tokens a row holds in this run
+    row_fill: float | None = None  # tokens / (gpus * rows * row_tokens): rows near 1.0 full train the most tokens per second
+    seconds: float  # the whole call, as the client saw it
+
+
+class RLStep(_Model):
+    """One training call of an RL run as the run recorded it: `TrainStep`'s fields plus `ts`, when it ended.
+    Through Tinker's API the run sees no rewards, so the reward fields are missing there."""
+    step: int
+    ts: float
+    idle_s: float | None = None
+    step_s: float
+    generation_s: float
+    train_s: float
+    client_s: float
+    session_s: float
+    replies: int
+    completion_length_mean: float | None = None
+    truncated_fraction: float | None = None
+    kl_sample_train: float | None = None
+    reward_mean: float | None = None
+    reward_std: float | None = None
+    zero_variance_fraction: float | None = None
+    all_best_fraction: float | None = None
+    all_worst_fraction: float | None = None
+    tokens: int | None = None
+    tokens_per_s_per_gpu: float | None = None
+    rows: int | None = None
+    row_fill: float | None = None
+
+
+class RLRollouts(_Model):
+    """A few rollouts of one training call, as the run kept them: its group with the highest mean reward and the
+    one with the lowest. A group: `group`, `reward_mean`, `episodes`; an episode: `reward`, `advantage` (as the trainer
+    used them) and `turns`, each with `prompt` (the end of its messages), `reply`, `truncated` (cut by max_tokens) and
+    `tokens`. Long texts are cut."""
+    steps: list[int]  # the training calls that have rollouts
+    step: int | None  # the one shown
+    groups: list[dict[str, Any]]
+
+
+class RLEstimate(_Model):
+    price_per_gpu_hour: int | None  # US cents; None: the model has no Serverless RL yet
+    gpus: int | None  # the GPUs of an RL run of this model
+    price_per_hour: int | None  # price_per_gpu_hour x gpus
+    credits: int | None  # US cents held at start for max_hours; the charge is for the time from ready to stopped
+    balance: int
+    enough: bool
+
+
 class Event(_Model):
     seq: int  # pass the last one as `after` to read on
     ts: float
@@ -184,6 +323,13 @@ class MetricPoint(_Model):
     round_time_s: float | None = None  # the whole round: generation, training and the weight sync
 
 
+class RolloutBatch(_Model):
+    id: str
+    created: float
+    prompts: dict[str, list[dict[str, Any]]]  # row (as text) -> the prompt messages
+    items: list[dict[str, Any]]  # each: completion, row, answer, metadata
+
+
 class LogLine(_Model):
     seq: int
     ts: float
@@ -219,7 +365,7 @@ class TrainingParams(TypedDict, total=False):
     val_dataset_id: str
     eval_steps: int
     # grpo only: max_steps rounds of batch_size prompts, num_generations completions each
-    reward: Literal["boxed", "exact"]
+    reward: Literal["boxed", "exact", "remote"]
     num_generations: int
     max_completion_length: int
     temperature: float

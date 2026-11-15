@@ -23,7 +23,7 @@ one kind per file:
     {"messages": [system?, user, ...], "answer": "..."}   the user's turn last
     {"prompt": "...", "answer": "..."}
 
-A numeric answer is kept as its text.
+A numeric answer is kept as its text, and an optional "metadata" value goes to a remote reward unchanged.
 """
 from __future__ import annotations
 
@@ -125,7 +125,10 @@ def to_rl(sample: dict[str, Any]) -> dict[str, Any]:
     else:
         chat = {**sample, "completion": "-"}
     # Checked as a chat with a placeholder reply, so prompts follow the same rules as chat samples.
-    return {"messages": to_messages(chat)[:-1], "answer": answer}
+    row = {"messages": to_messages(chat)[:-1], "answer": answer}
+    if "metadata" in sample:  # anything else a remote reward needs (test cases, rubric), passed to it unchanged
+        row["metadata"] = sample["metadata"]
+    return row
 
 
 def to_sample(sample: Any) -> dict[str, Any]:

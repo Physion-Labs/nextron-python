@@ -6,14 +6,15 @@ import hashlib
 import os
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from ._client import APIError, NexTronError, poll
-from .types import Billing, Checkpoint, Estimate, Event, Job, LogLine, MetricPoint, Progress, TrainingParams, Wandb
+from .types import (Billing, Checkpoint, Estimate, Event, Job, LogLine, MetricPoint, Progress, RolloutBatch, TrainingParams,
+                    Wandb)
 
 if TYPE_CHECKING:
     from ._client import NexTron
@@ -97,6 +98,30 @@ class Jobs:
             job = self.get(job_id)
             ended = job.done and (until == "training" or job.state != "succeeded" or job.checkpoint_ready)
             if not ended:
+                time.sleep(poll_interval)
+
+    def rollouts(self, job_id: str) -> builtins.list[RolloutBatch]:
+        """A remote-reward GRPO job's completions waiting for your scores: a batch per GPU per round."""
+        return [RolloutBatch.model_validate(b) for b in self._client._get(f"/v1/training/jobs/{job_id}/rollouts")["batches"]]
+
+    def score(self, job_id: str, batch_id: str, scores: builtins.list[float]) -> None:
+        """Send one score per completion of the batch, in its order. The job's round goes on when every batch has them."""
+        self._client._post(f"/v1/training/jobs/{job_id}/rollouts/{batch_id}/scores", {"scores": scores}, retry=True)
+
+    def serve_rewards(self, job_id: str, reward: Callable[[dict[str, Any]], float], *, poll_interval: float = 2) -> int:
+        """Score a remote-reward GRPO job's completions with `reward(item) -> float` until training is over; returns the
+        batches scored. An item has the prompt (`messages`), the `completion`, the sample's `row`, `answer` and
+        `metadata`. Each round waits for its scores (10 minutes at most, then the job fails): keep this running."""
+        scored = 0
+        while True:
+            batches = self.rollouts(job_id)
+            for batch in batches:
+                items = [{"messages": batch.prompts[str(item["row"])], **item} for item in batch.items]
+                self.score(job_id, batch.id, [float(reward(item)) for item in items])
+                scored += 1
+            if not batches:
+                if self.get(job_id).done:
+                    return scored
                 time.sleep(poll_interval)
 
     def billing(self, job_id: str) -> Billing:

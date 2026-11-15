@@ -2,9 +2,12 @@
 from ._client import APIError, NexTron, NexTronError
 from ._version import __version__
 from .data import CheckResult, check_file, to_messages, write_jsonl
-from .types import (Account, Billing, Checkpoint, CheckpointFile, Dataset, Estimate, Event, Job, Layout, LogLine, MetricPoint,
-                    ModelInfo, ModelLayout, ModelMethod, Org, Progress, TrainingParams, Wandb)
+from .live import LiveRun
+from .types import (Account, Billing, Checkpoint, CheckpointFile, Dataset, Episode, Estimate, Event, Job, Layout, LogLine,
+                    MetricPoint, ModelInfo, ModelLayout, ModelMethod, Org, Progress, RolloutBatch, Sample, SampleBatch, RLRun,
+                    RLEstimate, RLRollouts, RLStep, TrainingParams, TrainStep, Wandb)
 
 __all__ = ["NexTron", "NexTronError", "APIError", "Account", "Org", "Layout", "Dataset", "Job", "Estimate",
-           "MetricPoint", "LogLine", "Event", "Progress", "Billing", "ModelInfo", "ModelMethod", "ModelLayout", "Checkpoint", "CheckpointFile", "TrainingParams", "Wandb",
+           "MetricPoint", "LogLine", "Event", "Progress", "Billing", "ModelInfo", "ModelMethod", "ModelLayout", "Checkpoint", "CheckpointFile", "RolloutBatch", "RLRun", "RLEstimate", "TrainingParams", "Wandb",
+           "LiveRun", "Sample", "SampleBatch", "Episode", "TrainStep", "RLStep", "RLRollouts",
            "CheckResult", "check_file", "to_messages", "write_jsonl", "__version__"]

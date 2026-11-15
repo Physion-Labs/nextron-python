@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,19 @@ def _datasets_list(client: NexTron, args: argparse.Namespace) -> Any:
     return None
 
 
+def _serve_rewards(client: NexTron, args: argparse.Namespace) -> Any:
+    import importlib.util
+    path, _, name = args.reward.rpartition(":")
+    if not path or not name:
+        raise SystemExit("give the reward as FILE.py:FUNCTION")
+    spec = importlib.util.spec_from_file_location("reward_module", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return {"batches_scored": client.jobs.serve_rewards(args.job_id, getattr(module, name))}
+
+
 def _create(client: NexTron, args: argparse.Namespace) -> Any:
     draft = _draft(args)
     if not args.yes:
@@ -120,6 +134,38 @@ def _create(client: NexTron, args: argparse.Namespace) -> Any:
         if args.wandb_run_name:
             wandb["run_name"] = args.wandb_run_name
     return client.jobs.create(**draft, name=args.name, tags=args.tag or None, wandb=wandb, idempotency_key=args.idempotency_key)
+
+
+def _rl_start(client: NexTron, args: argparse.Namespace) -> Any:
+    if not args.yes:
+        estimate = client.rl.estimate(model=args.model, max_hours=args.max_hours)
+        price = None
+        if estimate.price_per_gpu_hour is not None:
+            price = f"${estimate.price_per_gpu_hour / 100:.2f} per H100-hour ({estimate.gpus} GPUs)"
+        _print({"price": price, "estimate": estimate.model_dump(mode="json"), "created": False,
+                "next": "show the cost to the owner; rerun with --yes to start the RL run"})
+        sys.exit(3)
+    return client.rl.start(model=args.model, max_hours=args.max_hours, max_context=args.max_context,
+                           max_grad_norm=args.max_grad_norm, idle_timeout=args.idle_timeout, name=args.name, tags=args.tag)
+
+
+def _rl_wait(client: NexTron, args: argparse.Namespace) -> Any:
+    """Progress goes to stderr about once a minute; the ready run to stdout."""
+    started, shown = time.monotonic(), [0.0]
+
+    def progress(run: Any) -> None:
+        elapsed = time.monotonic() - started
+        if elapsed - shown[0] >= 60:
+            shown[0] = elapsed
+            print(f"{run.state}, {elapsed:.0f} s (loading the model takes 6-8 minutes)", file=sys.stderr, flush=True)
+    return client.rl.wait(args.run_id, timeout=args.timeout, on_poll=progress)
+
+
+def _rl_env(client: NexTron, args: argparse.Namespace) -> None:
+    """Shell lines for `eval`. The key is not printed: the line refers to NEXTRON_API_KEY."""
+    url = client.rl.env(args.run_id)["TINKER_BASE_URL"]
+    print(f"export TINKER_BASE_URL={url}")
+    print('export TINKER_API_KEY="tml-$NEXTRON_API_KEY"')
 
 
 def _guide_dir() -> Path:
@@ -153,7 +199,7 @@ def _parser() -> argparse.ArgumentParser:
     groups = parser.add_subparsers(dest="group", required=True)
 
     cmd = groups.add_parser("guide", help="how to run experiments: read this first (no key needed)")
-    cmd.add_argument("topic", nargs="?", help="data, training, monitoring, checkpoints or api")
+    cmd.add_argument("topic", nargs="?", help="data, training, monitoring, checkpoints, rl, serverless-rl or api")
     cmd.set_defaults(run=None, local=_guide)
     groups.add_parser("me", help="account, balance (US cents), price list").set_defaults(run=lambda c, a: c.me())
     groups.add_parser("models", help="models a job can train, live").set_defaults(run=lambda c, a: c.models())
@@ -240,6 +286,11 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--follow", action="store_true", help="keep reading until training is over")
     cmd.add_argument("--until", choices=["training", "checkpoint"], default="training")
     cmd.set_defaults(run=_events)
+    cmd = jobs.add_parser("serve-rewards", help="score a remote-reward GRPO job's completions with your function until it ends")
+    cmd.add_argument("job_id")
+    cmd.add_argument("reward", metavar="FILE.py:FUNCTION", help="reward(item) -> float; item has messages, completion, row, "
+                     "answer, metadata")
+    cmd.set_defaults(run=_serve_rewards)
     cmd = jobs.add_parser("logs")
     cmd.add_argument("job_id")
     cmd.add_argument("--follow", action="store_true", help="keep reading until the job ends")
@@ -253,6 +304,39 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("job_id")
     cmd.add_argument("dest")
     cmd.set_defaults(run=lambda c, a: {"path": str(c.jobs.export(a.job_id, a.dest))})
+
+    rl = groups.add_parser("rl", help="Serverless RL: your own loop samples and trains on NexTron's GPUs").add_subparsers(dest="cmd", required=True)
+    cmd = rl.add_parser("start", help="price for --max-hours, then start with --yes")
+    cmd.add_argument("--model", required=True)
+    cmd.add_argument("--max-hours", type=float, required=True, help="the run stops itself after this long")
+    cmd.add_argument("--max-context", type=int, help="tokens: a prompt with its reply, and a training sequence (default 16384)")
+    cmd.add_argument("--max-grad-norm", type=float, help="gradient clipping for every step (default 1.0)")
+    cmd.add_argument("--idle-timeout", type=int, help="seconds without a sample or a step before it stops (default 1800)")
+    cmd.add_argument("--name", help="your label for the run")
+    cmd.add_argument("--tag", action="append", help="a tag; repeat")
+    cmd.add_argument("--yes", action="store_true", help="start the run; without it only the price is printed")
+    cmd.set_defaults(run=_rl_start)
+    rl.add_parser("list").set_defaults(run=lambda c, a: c.rl.list())
+    cmd = rl.add_parser("metrics", help="the record of every training call: rewards, time split, row fill")
+    cmd.add_argument("run_id")
+    cmd.set_defaults(run=lambda c, a: c.rl.metrics(a.run_id))
+    cmd = rl.add_parser("rollouts", help="what the model wrote in a training call: its best and worst group, with rewards")
+    cmd.add_argument("run_id")
+    cmd.add_argument("--step", type=int, help="the training call; the latest without")
+    cmd.set_defaults(run=lambda c, a: c.rl.rollouts(a.run_id, step=a.step))
+    cmd = rl.add_parser("wait", help="until the model is loaded, 6-8 minutes: progress on stderr, then the run")
+    cmd.add_argument("run_id")
+    cmd.add_argument("--timeout", type=float, help="give up after this many seconds (the run goes on)")
+    cmd.set_defaults(run=_rl_wait)
+    cmd = rl.add_parser("stop", help="stop billing; the model is saved if it trained")
+    cmd.add_argument("run_id")
+    cmd.add_argument("--wait", action="store_true", help="return once it is closed and the GPUs are released (about a minute)")
+    cmd.set_defaults(run=lambda c, a: c.rl.stop(a.run_id, wait=a.wait))
+    for name, run, text in (("get", lambda c, a: c.rl.get(a.run_id), None),
+                            ("env", _rl_env, 'TINKER_BASE_URL and TINKER_API_KEY for the tinker SDK: eval "$(... env ID)"')):
+        cmd = rl.add_parser(name, help=text)
+        cmd.add_argument("run_id")
+        cmd.set_defaults(run=run)
 
     cmd = groups.add_parser("sweep", help="one job per combination of --grid values; estimates, then starts with --yes")
     cmd.add_argument("--name", required=True, help="the sweep's name; its jobs are tagged sweep:<name>")

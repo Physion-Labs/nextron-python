@@ -2,8 +2,13 @@
 
 > **Release candidate.** The API may still change before 0.1.0; install with `--prerelease=allow`.
 
-Python SDK and CLI for [NexTron Cloud](https://nextron.physionlabs.ai): fine-tune open models with one request
-(model + dataset + settings) and download the trained checkpoint.
+Python SDK and CLI for [NexTron Cloud](https://nextron.physionlabs.ai), which trains open models in two modes:
+
+- **Managed training**: one request (model + dataset + settings) fine-tunes a model and leaves a checkpoint to download.
+  This page starts there.
+- **Serverless RL**: a loaded model your own RL loop samples from and trains, step by step:
+  `client.rl.connect(id)` with `sample` and `train`, or the `tinker` SDK and tinker-cookbook unchanged; see
+  [serverless-rl.md](skills/nextron-cloud/references/serverless-rl.md).
 
 ```bash
 uv venv && uv pip install --prerelease=allow nextron-cloud   # or, in a uv project: uv add --prerelease=allow nextron-cloud
@@ -80,8 +85,10 @@ The guide is written for people and coding agents alike, in [skills/nextron-clou
 - [data.md](skills/nextron-cloud/references/data.md): the sample format, what training learns from, checks
 - [training.md](skills/nextron-cloud/references/training.md): models, params, batch, cost and time, sweeps
 - [monitoring.md](skills/nextron-cloud/references/monitoring.md): states, metrics, failures, API errors
-- [rl.md](skills/nextron-cloud/references/rl.md): reinforcement learning (GRPO) with built-in rewards
+- [rl.md](skills/nextron-cloud/references/rl.md): managed reinforcement learning (a GRPO job) with built-in rewards
 - [checkpoints.md](skills/nextron-cloud/references/checkpoints.md): download, serve, evaluate
+- [serverless-rl.md](skills/nextron-cloud/references/serverless-rl.md): Serverless RL: your own RL loop with `sample`
+  and `train`, or the `tinker` SDK and tinker-cookbook, on NexTron's GPUs
 - [api.md](skills/nextron-cloud/references/api.md): every SDK call and CLI command
 - [examples/compare_outputs.py](examples/compare_outputs.py): answer held-out prompts with the fine-tuned and the base
   model side by side

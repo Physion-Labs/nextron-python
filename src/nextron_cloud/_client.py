@@ -59,12 +59,15 @@ class NexTron:
         if url.scheme != "https" and url.host not in ("localhost", "127.0.0.1", "::1"):
             raise NexTronError(f"refusing to send the API key over {url.scheme}://; use https")
         self._http = httpx.Client(base_url=base_url, headers=headers, timeout=timeout)
+        self._api_key = api_key
         self.max_retries = max_retries
 
         from .datasets import Datasets
         from .jobs import Jobs
+        from .rl import RL
         self.datasets = Datasets(self)
         self.jobs = Jobs(self)
+        self.rl = RL(self)
 
     def me(self) -> Account:
         """The account the key belongs to, with its balance and the price list."""

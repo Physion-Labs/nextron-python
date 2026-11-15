@@ -208,3 +208,146 @@ def test_cli_sample_table_counts_samples_over_the_models_longest(make_client, mo
     header, row = capsys.readouterr().out.splitlines()
     assert header.split("\t")[-1] == "over_65536"
     assert row.split("\t") == ["ds_s", "Math", "ready", "10", "False", "900", "70000", "2"]
+
+
+def test_serve_rewards_scores_each_batch_until_the_job_is_done(make_client):
+    item = {"row": 0, "completion": "4", "answer": "4"}
+    prompts = {"0": [{"role": "user", "content": "2+2"}]}
+    pages = [{"state": "running", "batches": [{"id": "round00000_rank0", "created": 1.0, "prompts": prompts,
+                                               "items": [item, item | {"completion": "5"}]}]},
+             {"state": "running", "batches": []}]
+    posted = []
+
+    def handler(request):
+        if request.url.path.endswith("/rollouts"):
+            return httpx.Response(200, json=pages.pop(0) if pages else {"state": "succeeded", "batches": []})
+        if request.url.path.endswith("/scores"):
+            posted.append((request.url.path.rsplit("/", 2)[-2], body(request)["scores"]))
+            return httpx.Response(200, json={"scored": 2})
+        return httpx.Response(200, json={"id": "job_1", "state": "succeeded", "model": "m", "layout": "1x8-h100", "dataset_id": "ds",
+                                         "params": {}, "created": 1.0, "updated": 1.0})
+
+    client = make_client(handler)
+    assert client.jobs.serve_rewards("job_1", lambda i: i["completion"] == i["answer"] and i["messages"] == prompts["0"]) == 1
+    assert posted == [("round00000_rank0", [1.0, 0.0])]
+
+
+def test_an_rl_run_is_priced_first_and_its_env_points_tinker_at_it_without_printing_the_key(make_client, monkeypatch, capsys):
+    run = {"id": "rl_1", "state": "starting", "model": "qwen3.8-27b", "params": {"max_hours": 2}, "created": 1.0, "updated": 1.0}
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path.endswith("/estimate"):
+            return httpx.Response(200, json={"price_per_gpu_hour": 300, "gpus": 8, "price_per_hour": 2400, "credits": 4800,
+                                             "balance": 10000, "enough": True})
+        if request.method == "POST":
+            assert body(request) == {"model": "qwen3.8-27b", "max_hours": 2.0, "max_context": 8192}
+            return httpx.Response(201, json=run)
+        return httpx.Response(200, json=run | {"state": "ready", "ready": 5.0})
+
+    from nextron_cloud import NexTron
+    from nextron_cloud.cli import main
+    make_client(handler)   # every client made from here on talks to the handler
+    monkeypatch.setenv("NEXTRON_API_KEY", "nk_test")
+    monkeypatch.setenv("NEXTRON_BASE_URL", "https://api.test")
+    create = ["rl", "start", "--model", "qwen3.8-27b", "--max-hours", "2", "--max-context", "8192"]
+    with pytest.raises(SystemExit) as stop:
+        main(create)
+    assert stop.value.code == 3 and ("POST", "/v1/training/sessions") not in calls   # only the price without --yes
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["price"] == "$3.00 per H100-hour (8 GPUs)" and printed["estimate"]["credits"] == 4800
+    main(create + ["--yes"])
+    assert ("POST", "/v1/training/sessions") in calls
+    client = NexTron()
+    assert client.rl.wait("rl_1").state == "ready"
+    assert client.rl.env("rl_1") == {"TINKER_BASE_URL": "https://api.test/v1/training/sessions/rl_1/tinker",
+                                            "TINKER_API_KEY": "tml-nk_test"}
+    capsys.readouterr()
+    main(["rl", "env", "rl_1"])
+    printed = capsys.readouterr().out
+    assert "nk_test" not in printed and 'TINKER_API_KEY="tml-$NEXTRON_API_KEY"' in printed
+
+
+def test_stopping_an_rl_run_can_wait_until_the_gpus_are_released(make_client):
+    states = iter(["closing", "closing", "closed"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        state = "closing" if request.method == "POST" else next(states)
+        return httpx.Response(200, json={"id": "rl_1", "state": state, "model": "m", "params": {}, "created": 1.0, "updated": 1.0,
+                                         "billable_seconds": 600})
+
+    client = make_client(handler)
+    assert client.rl.stop("rl_1").state == "closing"       # billing has stopped; the engine is shutting down
+    assert client.rl.stop("rl_1", wait=True).state == "closed"
+
+
+def test_a_live_run_samples_a_batch_and_trains_on_rewards_without_sending_tokens_back(make_client, tmp_path):
+    posted = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/v1/training/sessions/rl_1/tinker/nextron/v1")
+        assert request.headers["x-api-key"] == "tml-nk_test"
+        if request.method == "POST":
+            posted[path] = body(request) if request.content else None
+        if path == "/sample":
+            return httpx.Response(200, json={"batch": "b1", "prompts": 2})
+        if path == "/batches/b1":
+            groups = [[{"id": f"b1:{i}:{j}", "text": f"reply {i}{j}", "finish_reason": "stop", "tokens": 3} for j in range(2)] for i in range(2)]
+            return httpx.Response(200, json={"done": True, "finished": 2, "prompts": 2, "generate_seconds": 1.5, "samples": groups})
+        if path == "/train":
+            return httpx.Response(200, json={"step": "s1"})
+        if path == "/steps/s1":
+            return httpx.Response(200, json={"done": True, "metrics": {
+                "step": 1, "episodes": 4, "optimizer_steps": 1, "reward_mean": 0.5, "reward_std": 0.5, "groups": 2,
+                "zero_variance_fraction": 0.0, "all_best_fraction": 0.0, "all_worst_fraction": 0.0, "replies": 4,
+                "trained_tokens": 12, "kl_sample_train": 0.0, "step_s": 30.0, "generation_s": 12.0, "train_s": 15.0,
+                "client_s": 3.0, "session_s": 40.0}})
+        return httpx.Response(200, json={})
+
+    with make_client(handler).rl.connect("rl_1", log_dir=tmp_path, log_groups=1) as live:
+        batch = live.sample(["2 + 2?", [{"role": "system", "content": "Be brief."}, {"role": "user", "content": "3 + 3?"}]], n=2, max_tokens=64)
+        assert [[s.text for s in group] for group in batch] == [["reply 00", "reply 01"], ["reply 10", "reply 11"]]
+        step = live.train(batch, [[1.0, 0.0], [0.0, 1.0]], learning_rate=2e-6)
+        live.finish()
+    assert posted["/sample"]["prompts"][0] == {"messages": [{"role": "user", "content": "2 + 2?"}]} and posted["/sample"]["n"] == 2
+    assert posted["/train"]["episodes"][:2] == [{"samples": ["b1:0:0"], "reward": 1.0}, {"samples": ["b1:0:1"], "reward": 0.0}]
+    assert posted["/train"]["learning_rate"] == 2e-6 and (step.step, step.client_s) == (1, 3.0) and "/finish" in posted
+    (logged,) = [json.loads(line) for line in (tmp_path / "rollouts.jsonl").read_text().splitlines()]   # the first group only
+    assert logged["step"] == 1 and logged["episodes"][0] == {"reward": 1.0, "turns": [
+        {"prompt": {"messages": [{"role": "user", "content": "2 + 2?"}]}, "reply": "reply 00", "finish_reason": "stop", "tokens": 3}]}
+    assert json.loads((tmp_path / "metrics.jsonl").read_text())["reward_mean"] == 0.5
+
+
+def test_a_live_run_takes_conversations_as_episodes_and_reports_a_refused_step(make_client):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/train"):
+            assert body(request)["episodes"] == [{"samples": ["b1:0:0", "b2:0:0"], "reward": 1.0, "group": "task-7"}]
+            return httpx.Response(400, json={"error": "ValueError: these replies were sampled before the last training step: sample again"})
+        return httpx.Response(200, json={})
+
+    from nextron_cloud import APIError, Episode
+    live = make_client(handler).rl.connect("rl_1")
+    with pytest.raises(APIError, match="sample again"):
+        live.train(episodes=[Episode(samples=["b1:0:0", "b2:0:0"], reward=1.0, group="task-7")], learning_rate=1e-6)
+    live.close()
+
+
+def test_an_rl_runs_metrics_are_its_training_calls(make_client):
+    record = {"step": 1, "ts": 1794693600.0, "step_s": 45.0, "generation_s": 16.0, "train_s": 17.0, "client_s": 12.0,
+              "session_s": 60.0, "replies": 512, "reward_mean": 0.31, "row_fill": 0.9}
+    client = make_client(lambda request: httpx.Response(200, json=[record]))
+    (step,) = client.rl.metrics("rl_1")
+    assert (step.step, step.client_s, step.reward_mean, step.kl_sample_train) == (1, 12.0, 0.31, None)
+
+
+def test_an_rl_runs_rollouts_show_a_training_calls_best_and_worst_group(make_client):
+    asked = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url).removeprefix("https://api.test"))
+        group = {"group": "g", "reward_mean": 1.0, "episodes": [{"reward": 1.0, "advantage": 0.5, "turns": [{"prompt": [], "reply": "4", "truncated": False, "tokens": 2}]}]}
+        return httpx.Response(200, json={"steps": [1, 2], "step": 2, "groups": [group]})
+
+    shown = make_client(handler).rl.rollouts("rl_1", step=2)
+    assert asked == ["/v1/training/sessions/rl_1/rollouts?step=2"] and (shown.steps, shown.groups[0]["episodes"][0]["turns"][0]["reply"]) == ([1, 2], "4")

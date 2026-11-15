@@ -43,6 +43,8 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `jobs.wait(id, timeout=None, poll_interval=30)` | until training is over (`succeeded`, `failed`, `cancelled`); a failed job is returned, not raised |
 | `jobs.wait_checkpoint(id, timeout=None, poll_interval=60)` | until a succeeded job's checkpoint is uploaded; `NexTronError` if the job ended without one |
 | `jobs.logs(id, follow=False, poll_interval=10)` | iterator of `LogLine` (`seq`, `ts`, `line`) |
+| `jobs.rollouts(id)`, `jobs.score(id, batch_id, scores)` | remote-reward GRPO: `RolloutBatch` (`id`, `prompts`: row → prompt messages, `items`: completion, row, answer, metadata) waiting for scores; send one score per item (rl.md) |
+| `jobs.serve_rewards(id, reward)` | score every batch with `reward(item) -> float` until training is over; returns the batches scored |
 | `jobs.metrics(id)` | `list[MetricPoint]`: `step`, `total_steps`, `loss`, `val_loss`, `lr`, `step_time_s`, `tokens_per_s_per_gpu`, `tokens_per_s_total`, `ts`, and `samples`, `real_tokens`, `trained_tokens`, `padding_tokens` (see monitoring.md); GRPO adds `reward_mean`, `zero_variance_fraction`, `completion_length_mean`, `generation_s`, `round_time_s` (rl.md) |
 | `jobs.cancel(id)` | queued: cancelled now; running: stops soon, no checkpoint |
 | `jobs.checkpoint(id)` | `Checkpoint`: `step`, `bytes`, `expires`, `files` (`name`, `bytes`, `sha256`, `url`) |
@@ -68,10 +70,27 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `experiments.report(client, tag=None, job_ids=None)` | per job: settings, `steps`, `loss`, `val_loss`, `best_val_loss`, `best_val_step`, `tokens_trained`, `charged_credits`, `training_minutes`, `checkpoint_ready`, `error` |
 | `experiments.grid(axes)`, `experiments.sweep_tag(name)` | the combinations; the sweep's tag |
 
+## Serverless RL
+
+| call | does |
+|---|---|
+| `rl.estimate(model, max_hours)` | `RLEstimate`: `price_per_gpu_hour`, `gpus`, `price_per_hour` (the two multiplied), `credits` (held for `max_hours`), `balance`, `enough`; US cents |
+| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, idle_timeout=None, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL |
+| `rl.connect(id, log_dir=None, log_groups=4)` | `LiveRun` on a ready run (context manager; keeps the run alive while open). `log_dir`: `metrics.jsonl` and `rollouts.jsonl` (the first `log_groups` groups of every step) are written there |
+| `live.sample(prompts, n=1, max_tokens=None, temperature=1.0, top_p=1.0, top_k=-1, stop=None, timeout=None)` | `SampleBatch`: `batch[i][j]` is a `Sample` (`id`, `text`, `finish_reason`, `tokens`); `generate_seconds`, `seconds`. A prompt is a string, a list of messages, or `{"messages", "tools"}` / `{"tokens"}` |
+| `live.train(batch, rewards, learning_rate=..., advantage="centered", loss="importance_sampling", clip_low=None, clip_high=None, substeps=1, beta1=None, beta2=None, eps=None, weight_decay=None, timeout=None)` | one training call; `rewards` has the batch's shape. Or `episodes=[Episode(samples, reward, group=None)]` for conversations. `TrainStep`, the step's record: `step`, `reward_mean`, `reward_std`, `groups`, `zero_variance_fraction`, `all_best_fraction`, `all_worst_fraction`, `replies`, `completion_length_mean`, `truncated_fraction`, `kl_sample_train`, `step_s`, `generation_s`, `train_s`, `client_s`, `session_s`, `tokens`, `tokens_per_s_per_gpu`, `rows`, `row_tokens`, `row_fill`, `seconds` |
+| `live.info()`, `live.finish()`, `live.close()` | the model, context and `round`; save the model and stop the run; stop the keep-alive only |
+| `rl.rollouts(id, step=None)` | `RLRollouts`: a few rollouts of a training call (the latest without `step`): `steps`, `step`, `groups` (the best and the worst group: `reward_mean`, `episodes` with `reward`, `advantage`, `turns` of `prompt` / `reply` / `truncated`); CLI `rl rollouts ID [--step N]` |
+| `rl.metrics(id)` | `list[RLStep]`: the record of every training call (`TrainStep`'s fields and `ts`), also after the run stopped; CLI `rl metrics ID` |
+| `rl.get(id)`, `rl.list()` | `RLRun`: `id`, `state` (`queued`, `starting`, `ready`, `closing`, `closed`, `failed`), `model`, `params`, `ready`, `billable_seconds`, `close_requested`, `checkpoint`, `error`, `done` |
+| `rl.wait(id, timeout=None, poll_interval=15, on_poll=None)` | until `ready`; `NexTronError` if it ended instead |
+| `rl.env(id)` | `{"TINKER_BASE_URL", "TINKER_API_KEY"}` for the `tinker` SDK; the second holds your key |
+| `rl.stop(id, wait=False)` | billing stops, state `closing`; `wait=True` returns at `closed`. The model is saved if it trained a step (then `jobs.wait_checkpoint(id)`, `jobs.download_checkpoint(id, dest)`) |
+
 ## CLI
 
 `nextron-cloud` prints JSON and exits 0 on success, 1 on an error (`{"error", "status", "message"}`), 3 when
-`jobs create` or `sweep` printed estimates instead of starting.
+`jobs create`, `rl start` or `sweep` printed estimates instead of starting.
 
 ```
 nextron-cloud me | models | layouts
@@ -84,7 +103,12 @@ nextron-cloud jobs create   --model M --dataset ID [--layout L] [--param KEY=VAL
                             [--wandb-project P [--wandb-run-name R]]   (W&B key from WANDB_API_KEY)
 nextron-cloud jobs list [--tag T] | get ID | wait ID | progress ID | billing ID | metrics ID | cancel ID | logs ID [--follow]
 nextron-cloud jobs events ID [--after SEQ] [--follow] [--until training|checkpoint]
+nextron-cloud jobs serve-rewards ID FILE.py:FUNCTION     # remote-reward GRPO: score until training is over
 nextron-cloud jobs wait-checkpoint ID | checkpoint ID | download ID DEST [--include GLOB ...] | export ID DEST
+nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-norm G] [--idle-timeout S]
+                       [--name N] [--tag T ...] [--yes]
+nextron-cloud rl list | get ID | wait ID [--timeout S] | env ID | stop ID [--wait]   # env: shell lines for eval, without the key
+nextron-cloud rl metrics ID | rollouts ID [--step N]
 nextron-cloud sweep --name N --model M --dataset ID [--layout L] [--param KEY=VALUE ...] --grid KEY=V1,V2 [...] [--yes]
 nextron-cloud report [JOB_ID ...] [--tag T] [--table]
 ```
