@@ -1,6 +1,7 @@
-# Managed reinforcement learning (GRPO)
+# Reinforcement fine-tuning (RFT)
 
-This page is about a managed GRPO job: NexTron runs the loop and a built-in reward scores the replies. To run your
+Reinforcement fine-tuning trains on prompts with a reward instead of replies to copy. It runs GRPO; the API calls it
+`train_type="grpo"`. This page is about that managed job: NexTron runs the loop and a built-in reward scores the replies. To run your
 own loop with your own reward code, environments or tools, use Serverless RL
 ([serverless-rl.md](serverless-rl.md), `nextron-cloud rl ...`).
 

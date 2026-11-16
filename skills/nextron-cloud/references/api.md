@@ -26,7 +26,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `datasets.import_huggingface(url, config="default", split="train", name=None, hf_token=None)` | import one split; `importing` then `checking` |
 | `datasets.huggingface_splits(url, hf_token=None)` | `[{"config", "split", "rows", "bytes"}]` |
 | `datasets.wait(id, timeout=3600, poll_interval=5)` | until `ready` or `invalid` |
-| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, or `rl` for prompts with answers) (see data.md) |
+| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, `rl` for prompts with answers, or `preference` for DPO pairs) (see data.md) |
 | `datasets.download_url(id)` | a one-hour link to the file as training reads it |
 | `datasets.delete(id)` | refused (409) while an unfinished job uses it |
 

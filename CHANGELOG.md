@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0rc9
+
+- Preference training (DPO): `train_type="dpo"` with `beta`, on a dataset of preference pairs (`kind="preference"`):
+  `{"messages" | "prompt", "chosen", "rejected"}` or two conversations that differ only in their last reply.
+  `data.py` checks and converts them like the server. `nextron-cloud guide dpo`.
+- Guides: managed GRPO is reinforcement fine-tuning (RFT).
+
 ## 0.1.0rc8
 
 - Inference guide: `stream=True` streams the answer as it is generated (no 100 s limit while it streams); a call

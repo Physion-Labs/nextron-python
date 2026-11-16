@@ -26,7 +26,7 @@ All optional; the server fills the rest from a tested recipe for the model.
 
 | key | default | allowed / notes |
 |---|---|---|
-| `train_type` | `"full"` | `"full"`, `"lora"` |
+| `train_type` | `"full"` | `"full"`, `"lora"`; `"grpo"` and `"dpo"` have their own settings ([rl.md](rl.md), [dpo.md](dpo.md)) |
 | `num_train_epochs` | 1 | 1-20. Give this or `max_steps` |
 | `max_steps` | | 1-100,000. With both, training stops at whichever comes first (`num_train_epochs` is 1 unless set) |
 | `learning_rate` | 1e-5 | up to 1e-3. Starting points: full 1e-5, LoRA 1e-4 |

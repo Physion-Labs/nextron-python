@@ -69,6 +69,21 @@ def test_prepare_file_names_a_missing_column(tmp_path: Path):
         prepare_file(csv_path, tmp_path, prompt_column="ticket", response_column="reply")
 
 
+def test_preference_pairs_in_three_formats(tmp_path: Path):
+    q = [{"role": "user", "content": "say hi"}]
+    hi, no = {"role": "assistant", "content": "hi"}, {"role": "assistant", "content": "no"}
+    want = {"messages": q, "chosen": hi, "rejected": no}
+    assert to_sample({"messages": q, "chosen": "hi", "rejected": no}) == want
+    assert to_sample({"prompt": "say hi", "chosen": "hi", "rejected": "no"}) == want
+    assert to_sample({"chosen": q + [hi], "rejected": q + [no]}) == want
+    for bad in ({"prompt": "q", "chosen": "a", "rejected": ""}, {"chosen": q + [hi], "rejected": [no]}):
+        with pytest.raises(ValueError):
+            to_sample(bad)
+    path = tmp_path / "pairs.jsonl"
+    path.write_text(json.dumps({"prompt": "q", "chosen": "a", "rejected": "b"}) + "\n")
+    assert (check_file(path).ok, check_file(path).kind) == (True, "preference")
+
+
 def test_rl_samples_keep_their_answer_and_a_file_holds_one_kind(tmp_path: Path):
     assert to_sample({"prompt": "2+2?", "answer": 4}) == {"messages": [{"role": "user", "content": "2+2?"}], "answer": "4"}
     assert to_sample({"question": "2+2?", "answer": "4"})["messages"][-1] == {"role": "assistant", "content": "4"}  # a chat pair

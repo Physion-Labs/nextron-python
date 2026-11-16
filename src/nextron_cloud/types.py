@@ -84,7 +84,7 @@ class Dataset(_Model):
     validation: bool = False
     source: str | None = None
     tokens: dict[str, Any] | None = None  # per model: total, longest sample (RL: longest prompt), samples over each length
-    kind: Literal["chat", "rl"] = "chat"  # rl: prompts with answers, for train_type "grpo"
+    kind: Literal["chat", "rl", "preference"] = "chat"  # rl: prompts with answers (grpo); preference: pairs (dpo)
 
     @property
     def done(self) -> bool:
@@ -357,7 +357,7 @@ class Checkpoint(_Model):
 
 class TrainingParams(TypedDict, total=False):
     """The settings a job can change; the server fills in the rest."""
-    train_type: Literal["full", "lora", "grpo"]
+    train_type: Literal["full", "lora", "grpo", "dpo"]
     learning_rate: float
     num_train_epochs: int
     max_steps: int
@@ -374,6 +374,8 @@ class TrainingParams(TypedDict, total=False):
     num_generations: int
     max_completion_length: int
     temperature: float
+    # dpo only: how strongly the preference pulls away from the starting model
+    beta: float
 
 
 class Wandb(TypedDict, total=False):

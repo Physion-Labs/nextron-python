@@ -9,7 +9,7 @@ NexTron Cloud trains open models on its own H100s, in two modes:
 
 - **Managed training** (most of this guide): one request = one whole training run. You send a model, a dataset and a few
   settings; the service trains and leaves a checkpoint (a Hugging Face model directory) to download. Supervised
-  fine-tuning (full or LoRA) and reinforcement learning with built-in rewards (GRPO). Billed by tokens trained.
+  fine-tuning (full or LoRA), reinforcement fine-tuning with built-in rewards (RFT, GRPO) and preference training (DPO). Billed by tokens trained.
 - **Serverless RL** ([references/serverless-rl.md](references/serverless-rl.md)): an RL run is a loaded model the
   user's own loop samples from and trains step by step (`client.rl.connect`: `sample`, score in your code, `train`;
   or the `tinker` SDK and tinker-cookbook unchanged); NexTron runs each sample and each optimizer step. For custom
@@ -27,7 +27,8 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 | build, convert and check data; what is trained on | [references/data.md](references/data.md) |
 | watch a job, read its metrics, fix a failure | [references/monitoring.md](references/monitoring.md) |
 | download, serve and evaluate the checkpoint | [references/checkpoints.md](references/checkpoints.md) |
-| managed reinforcement learning (a GRPO job): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
+| reinforcement fine-tuning (RFT, a GRPO job): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
+| preference training (a DPO job): prompts with a chosen and a rejected reply | [references/dpo.md](references/dpo.md) |
 | Serverless RL: your own RL loop (this SDK's `sample` / `train`, or the tinker SDK) on NexTron's GPUs, billed by time | [references/serverless-rl.md](references/serverless-rl.md) |
 | try a trained model right after training, without downloading it: an inference run, called with this SDK or an OpenAI client | [references/inference.md](references/inference.md) |
 | every SDK call and CLI command | [references/api.md](references/api.md) |
@@ -54,7 +55,7 @@ https://nextron.physionlabs.ai, opens **API keys** (only an organisation owner c
    fits (the model's `max_seq_len`, the data's longest sample, `truncated_samples`), and wait for a yes.
    The CLI enforces this: `nextron-cloud jobs create ...` without `--yes` prints the estimate and starts nothing.
 2. **Take models and limits from `client.models()`**, never from memory or this file: model ids, which methods each
-   trains (`full`, `lora`, `grpo` for reinforcement learning), the longest sample per method, prices, GPU setups and whether one is free now.
+   trains (`full`, `lora`, `grpo` for reinforcement learning, `dpo` for preference pairs), the longest sample per method, prices, GPU setups and whether one is free now.
    `jobs.estimate` runs the same checks as creating the job (it raises with the reason when the job would be refused)
    and returns the settings, about how many steps, and warnings: show those to the owner with the price.
 3. **Never start the same job twice.** `jobs.create` retries safely with one idempotency key. If your own process

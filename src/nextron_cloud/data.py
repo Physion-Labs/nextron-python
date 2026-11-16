@@ -24,6 +24,13 @@ one kind per file:
     {"prompt": "...", "answer": "..."}
 
 A numeric answer is kept as its text, and an optional "metadata" value goes to a remote reward unchanged.
+
+Preference training (train_type "dpo") takes a prompt with a preferred and a rejected reply:
+
+    {"messages": [system?, user, ...], "chosen": reply, "rejected": reply}   a reply is a string or an assistant message
+    {"prompt": "..." | [messages], "chosen": ..., "rejected": ...}             TRL's format
+    {"chosen": [conversation], "rejected": [conversation]}                     two conversations that differ only in
+                                                                               their last reply (UltraFeedback, HH-RLHF)
 """
 from __future__ import annotations
 
@@ -131,9 +138,50 @@ def to_rl(sample: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def is_preference(sample: Any) -> bool:
+    """Whether the sample is a prompt with a preferred and a rejected reply (DPO)."""
+    return isinstance(sample, dict) and "chosen" in sample and "rejected" in sample
+
+
+def _reply(value: Any, name: str) -> Message:
+    if isinstance(value, list) and len(value) == 1:
+        value = value[0]
+    if isinstance(value, dict):
+        if value.get("role") != "assistant":
+            raise ValueError(f'"{name}" must be the assistant\'s reply')
+        value = value.get("content")
+    content = _text(value)
+    if not content.strip():
+        raise ValueError(f'needs a non-empty "{name}" reply')
+    return {"role": "assistant", "content": content}
+
+
+def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
+    """A DPO sample as {"messages", "chosen", "rejected"}. ValueError says why it cannot be used."""
+    chosen, rejected = sample["chosen"], sample["rejected"]
+    if "messages" in sample or "prompt" in sample:
+        prompt = sample.get("messages", sample.get("prompt"))
+        prompt = [{"role": "user", "content": prompt}] if isinstance(prompt, str) else prompt
+    elif isinstance(chosen, list) and isinstance(rejected, list) and len(chosen) > 1 and chosen[:-1] == rejected[:-1]:
+        prompt, chosen, rejected = chosen[:-1], chosen[-1], rejected[-1]
+    else:
+        raise ValueError('a preference sample needs "messages" or "prompt" with "chosen" and "rejected", or two '
+                         '"chosen" / "rejected" conversations that differ only in their last reply')
+    if not isinstance(prompt, list) or not prompt or not isinstance(prompt[-1], dict) or prompt[-1].get("role") != "user":
+        raise ValueError("a preference sample's prompt ends with the user's turn: the replies answer it")
+    chosen, rejected = _reply(chosen, "chosen"), _reply(rejected, "rejected")
+    messages = to_messages({**sample, "messages": prompt + [chosen]})  # the prompt follows the same rules as chat samples
+    return {"messages": messages[:-1], "chosen": chosen, "rejected": rejected}
+
+
 def to_sample(sample: Any) -> dict[str, Any]:
-    """The sample as the server stores it: {"messages"} for a chat, {"messages", "answer"} for RL."""
-    return to_rl(sample) if is_rl(sample) else {"messages": to_messages(sample)}
+    """The sample as the server stores it: {"messages"} for a chat, {"messages", "answer"} for RL, {"messages",
+    "chosen", "rejected"} for DPO."""
+    if is_rl(sample):
+        return to_rl(sample)
+    if is_preference(sample):
+        return to_preference(sample)
+    return {"messages": to_messages(sample)}
 
 
 def write_jsonl(samples: Iterable[Any], path: str | os.PathLike[str]) -> int:
@@ -155,7 +203,7 @@ class CheckResult:
     samples: int = 0
     chars: int = 0  # message text; a token is roughly 3-4 characters of English
     errors: list[str] = field(default_factory=list)
-    kind: str | None = None  # "chat", or "rl" for prompts with answers
+    kind: str | None = None  # "chat", "rl" for prompts with answers, or "preference" for DPO pairs
 
     @property
     def ok(self) -> bool:
@@ -193,12 +241,13 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                 _note(result, f"line {number}: {error}")
                 continue
             result.samples += 1
-            result.chars += sum(len(m["content"]) for m in row["messages"])
-            kinds.add("rl" if "answer" in row else "chat")
+            replies = [row[k] for k in ("chosen", "rejected") if k in row]
+            result.chars += sum(len(m["content"]) for m in row["messages"] + replies)
+            kinds.add("rl" if "answer" in row else "preference" if "chosen" in row else "chat")
     if not result.errors and not result.samples:
         result.errors.append("the file has no samples")
     if len(kinds) > 1:
-        result.errors.append("the file mixes chat samples with prompts and answers (RL); a dataset holds one kind")
+        result.errors.append("the file mixes chat samples, prompts with answers (RL) and preference pairs; a dataset holds one kind")
     result.kind = kinds.pop() if len(kinds) == 1 else None
     return result
 
