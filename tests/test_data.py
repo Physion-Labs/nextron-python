@@ -1,4 +1,5 @@
 import json
+import struct
 from pathlib import Path
 
 import pytest
@@ -108,7 +109,8 @@ def test_samples_with_images_are_checked_and_packed(tmp_path: Path):
 
     from nextron_cloud.data import write_bundle
 
-    png, jpg = b"\x89PNG\r\n\x1a\n" + b"a", b"\xff\xd8\xff" + b"b"
+    png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 640, 480)
+    jpg = b"\xff\xd8\xff\xc0" + struct.pack(">HBHH", 8, 8, 480, 640) + b"\x03\xff\xda"
     (tmp_path / "photos").mkdir()
     (tmp_path / "photos" / "cat.png").write_bytes(png)
     uri = "data:image/jpeg;base64," + __import__("base64").b64encode(jpg).decode()
@@ -135,3 +137,25 @@ def test_samples_with_images_are_checked_and_packed(tmp_path: Path):
         path.write_text(json.dumps({"messages": [{"role": "user", "content": [{"type": "image", "image": image}]},
                                                  {"role": "assistant", "content": "x"}]}) + "\n")
         assert error in check_file(path).errors[0]
+
+    for name, data, error in [("cut.png", png[:20], "not a complete PNG"), ("cut.jpg", jpg[:4], "not a complete JPEG"),
+                              ("wide.png", png[:16] + struct.pack(">II", 9000, 9000), "36 million pixels"),
+                              ("strip.png", png[:16] + struct.pack(">II", 8000, 32), "200 times longer")]:
+        (tmp_path / name).write_bytes(data)
+        path.write_text(json.dumps({"messages": [{"role": "user", "content": [{"type": "image", "image": name}]},
+                                                 {"role": "assistant", "content": "x"}]}) + "\n")
+        assert error in check_file(path).errors[0]
+
+
+def test_prepare_and_write_jsonl_keep_images(tmp_path: Path):
+    from nextron_cloud.data import write_jsonl
+
+    (tmp_path / "cat.png").write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 640, 480))
+    row = {"messages": [{"role": "user", "content": [{"type": "image", "image": "cat.png"}, {"type": "text", "text": "what"}]},
+                        {"role": "assistant", "content": "a cat"}]}
+    assert write_jsonl([row], tmp_path / "data.jsonl") == 1
+    assert json.loads((tmp_path / "data.jsonl").read_text()) == row
+    report = prepare_file(tmp_path / "data.jsonl", tmp_path / "out", val_fraction=0)
+    assert report["skipped"] == 0
+    result = check_file(report["train"]["path"])   # the image is found from the new folder
+    assert result.ok and result.images == 1

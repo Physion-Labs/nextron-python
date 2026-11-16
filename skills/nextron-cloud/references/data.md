@@ -26,7 +26,8 @@ A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line
 
 - Roles are `system`, `user`, `assistant`. At most one system message, and only first.
 - At least one non-empty assistant message.
-- `content` is a string, or OpenAI content parts that are all `{"type": "text", "text": ...}`.
+- `content` is a string, or OpenAI content parts: `{"type": "text", "text": ...}`, and in user messages image parts
+  (see [Images](#images)).
 - Audio and video are refused, and so is an `image(s)` / `video(s)` / `audio(s)` field beside the messages. Images go
   inside user messages: see [Images](#images).
 
@@ -152,9 +153,14 @@ organisation: if `datasets upload` answers 403, yours is not enabled yet.
 
 - An image is a file path relative to the JSONL file, or a base64 `data:` URI. OpenAI's
   `{"type": "image_url", "image_url": {"url": ...}}` is read the same way. A URL is not fetched: download the file first.
-- JPEG and PNG only, up to 20 MB and 36 million pixels each, at most 16 a sample, in user messages only.
+- JPEG and PNG only, up to 20 MB and 36 million pixels each, no side over 200 times the other, at most 16 a sample,
+  in user messages only.
 - Do not write `<image>`, `<video>` or `<audio>` in the text of such a dataset.
-- `datasets check` reads every image file; `datasets upload` packs the samples and the image files into one upload
+- `datasets check` reads every image file's header, as the server does on upload: type, size, pixel count. The
+  server then decodes each image; one whose data is broken behind a good header makes the dataset `invalid` there.
+- `datasets prepare` and `write_jsonl` keep a sample with images as it is (`prepare` rewrites image paths for its
+  output folder).
+- `datasets upload` packs the samples and the image files into one upload
   (each file once, up to 20 GB together). Nothing else changes: `wait`, then train.
 - An image counts as tokens, and is billed as them: up to 514 on Qwen3.8-27B (a 32-pixel square each, so a small image
   costs less), about 260-282 on Gemma-4-26B-A4B whatever its size. `tokens` on the dataset includes them per model.

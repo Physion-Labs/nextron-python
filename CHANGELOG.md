@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0rc12
+
+- `datasets prepare` and `write_jsonl` keep samples with images (they were left out with "images go in the user
+  messages"); `prepare` rewrites image paths for its output folder.
+- `datasets check` reads each image's header as the server does: a file that is not a complete JPEG or PNG, has over
+  36 million pixels, or one side over 200 times the other is reported before upload.
+
 ## 0.1.0rc11
 
 - Datasets with images: a user message of a `messages` sample can carry JPEG or PNG images as content parts

@@ -57,7 +57,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | does |
 |---|---|
 | `to_messages(sample)` | one sample in any accepted format → `[{"role", "content"}]`; `ValueError` says why not |
-| `write_jsonl(samples, path)` | write samples as `messages` JSONL; returns the count; raises on the first bad one |
+| `write_jsonl(samples, path)` | write samples as `messages` JSONL (a sample with images as it is); returns the count; raises on the first bad one |
 | `check_file(path)` | `CheckResult(samples, chars, errors)`, `.ok`: the server's format check, locally |
 | `data.read_rows(path)` | rows of a `.jsonl`, `.json` or `.csv` file |
 | `data.prepare_file(path, out_dir=".", val_fraction=0.1, seed=0, prompt_column=None, response_column=None, system=None)` (`prompt_column`: a name or a list joined by blank lines) | writes `train.jsonl` / `val.jsonl`; returns their paths and counts, `skipped`, `errors` |

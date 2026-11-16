@@ -47,9 +47,10 @@ import hashlib
 import io
 import json
 import os
+import struct
 import tarfile
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,9 @@ MEDIA_ERROR = ("has an image, audio or video part; images go in the user message
 PLACEHOLDERS = ("<image>", "<video>", "<audio>")   # the trainer reads these in a sample's text as media
 IMAGE_TYPES = {b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
 MAX_IMAGE_BYTES = 20 * 1000**2
+MAX_IMAGE_PIXELS = 36_000_000
+MAX_IMAGE_RATIO = 200   # long side / short side
+JPEG_SIZE_MARKERS = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
 MAX_IMAGES = 16   # per sample
 MAX_LINE_BYTES = 32 << 20
 MAX_FILE_BYTES = 5 * 1000**3
@@ -128,7 +132,60 @@ def read_image(source: str, base: Path) -> tuple[str, bytes]:
         raise ValueError(f"has an image that is neither JPEG nor PNG ({source[:60]}); convert it")
     if len(data) > MAX_IMAGE_BYTES:
         raise ValueError(f"has an image over {MAX_IMAGE_BYTES // 1000**2} MB ({source[:60]})")
+    size = _png_size(data) if kind == "png" else _jpeg_size(data)
+    if size is None:
+        raise ValueError(f"has an image that is not a complete {'PNG' if kind == 'png' else 'JPEG'} file ({source[:60]})")
+    width, height = size
+    if width < 1 or height < 1:
+        raise ValueError(f"has an image with no pixels ({source[:60]})")
+    if width * height > MAX_IMAGE_PIXELS:
+        raise ValueError(f"has an image of more than {MAX_IMAGE_PIXELS // 10**6} million pixels ({width} x {height}, {source[:60]})")
+    if max(width, height) > MAX_IMAGE_RATIO * min(width, height):
+        raise ValueError(f"has an image more than {MAX_IMAGE_RATIO} times longer than wide ({width} x {height}, {source[:60]})")
     return kind, data
+
+
+def _png_size(data: bytes) -> tuple[int, int] | None:
+    """(width, height) from a PNG's header; None without one."""
+    if data[12:16] != b"IHDR" or len(data) < 24:
+        return None
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
+def _jpeg_size(data: bytes) -> tuple[int, int] | None:
+    """(width, height) from a JPEG's segments before its image data; None when they are broken or give no size."""
+    size = None
+    at = 2
+    while at + 4 <= len(data):
+        if data[at] != 0xFF:
+            return None
+        marker = data[at + 1]
+        if marker == 0xFF:   # fill byte
+            at += 1
+            continue
+        if marker == 0xDA:   # the image data follows
+            break
+        length = struct.unpack(">H", data[at + 2:at + 4])[0]
+        payload = data[at + 4:at + 2 + length]
+        if size is None and marker in JPEG_SIZE_MARKERS and len(payload) >= 5:
+            height, width = struct.unpack(">HH", payload[1:5])
+            size = width, height
+        at += 2 + length
+    return size
+
+
+def _image_parts(sample: Any) -> Iterator[tuple[list[Any], int, str]]:
+    """(the content parts, the index, what the image names) of each image part in a sample's messages."""
+    messages = sample.get("messages") if isinstance(sample, dict) else None
+    for message in messages if isinstance(messages, list) else []:
+        parts = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(parts, list):
+            continue
+        for i, part in enumerate(parts):
+            source = _image(part) if isinstance(part, dict) else None
+            if isinstance(source, str):
+                yield parts, i, source
 
 
 def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
@@ -253,13 +310,21 @@ def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
     return {"messages": to_messages(sample, images)}
 
 
+def _line(sample: Any) -> Any:
+    """The sample as a line of a JSONL file: in the server's form, or as it is when it has images (they stay content parts)."""
+    images: list[str] = []
+    row = to_sample(sample, images)
+    return sample if images else row
+
+
 def write_jsonl(samples: Iterable[Any], path: str | os.PathLike[str]) -> int:
-    """Write samples in any format above as JSONL in the server's form; returns how many. Raises on the first bad one."""
+    """Write samples in any format above as JSONL in the server's form; returns how many. Raises on the first bad one.
+    A sample with images is written as it is; its image paths are read relative to `path`'s folder."""
     count = 0
     with Path(path).open("w", encoding="utf-8") as out:
         for number, sample in enumerate(samples, 1):
             try:
-                row = to_sample(sample)
+                row = _line(sample)
             except ValueError as error:
                 raise ValueError(f"sample {number}: {error}") from None
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -344,24 +409,16 @@ def write_bundle(path: str | os.PathLike[str], out: str | os.PathLike[str]) -> i
                 if not line:
                     continue
                 sample = json.loads(line)
-                messages = sample.get("messages") if isinstance(sample, dict) else None
-                for message in messages if isinstance(messages, list) else []:
-                    parts = message.get("content") if isinstance(message, dict) else None
-                    if not isinstance(parts, list):
-                        continue
-                    for i, part in enumerate(parts):
-                        source = _image(part) if isinstance(part, dict) else None
-                        if not isinstance(source, str):
-                            continue
-                        try:
-                            kind, data = read_image(source, path.parent)
-                        except ValueError as error:
-                            raise ValueError(f"line {number}: {error}") from None
-                        sha = hashlib.sha256(data).hexdigest()
-                        if sha not in packed:
-                            packed.add(sha)
-                            add(f"images/{sha}.{kind}", len(data), io.BytesIO(data))
-                        parts[i] = {"type": "image", "image": f"sha256:{sha}"}
+                for parts, i, source in _image_parts(sample):
+                    try:
+                        kind, data = read_image(source, path.parent)
+                    except ValueError as error:
+                        raise ValueError(f"line {number}: {error}") from None
+                    sha = hashlib.sha256(data).hexdigest()
+                    if sha not in packed:
+                        packed.add(sha)
+                        add(f"images/{sha}.{kind}", len(data), io.BytesIO(data))
+                    parts[i] = {"type": "image", "image": f"sha256:{sha}"}
                 samples.write(json.dumps(sample, ensure_ascii=False).encode() + b"\n")
         size = samples.tell()
         samples.seek(0)
@@ -399,7 +456,8 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
     """Convert a file to train.jsonl and val.jsonl in `out_dir`: rows in any accepted format, or user and assistant
     columns (`prompt_column`, several joined by a blank line when non-empty; `response_column`), e.g. of a CSV. With
     `answer_column` instead of `response_column`, the rows become RL samples (prompt + answer). Rows that cannot be
-    trained on are left out and counted. Shuffled with `seed`; the validation set is `val_fraction` of the rows, at most 5,000."""
+    trained on are left out and counted. Samples with images keep them, their paths rewritten for `out_dir`. Shuffled
+    with `seed`; the validation set is `val_fraction` of the rows, at most 5,000."""
     import random
 
     if not 0 <= val_fraction < 1:
@@ -411,9 +469,10 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
         missing = [c for c in (*prompt_columns, target_column) if c not in rows[0]]
         if missing:
             raise ValueError(f"{Path(path).name} has no column {', '.join(missing)}; it has {', '.join(rows[0])}")
-    samples: list[dict[str, Any]] = []
+    samples: list[Any] = []
     errors: list[str] = []
     skipped = 0
+    out = Path(out_dir)
     for number, row in enumerate(rows, 1):
         if prompt_columns and target_column:
             prompt = "\n\n".join(str(row[c]) for c in prompt_columns if row[c])
@@ -421,14 +480,17 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
         if system:
             row = dict(row, system=system)
         try:
-            samples.append(to_sample(row))
+            line = _line(row)
+            for parts, i, source in _image_parts(line):
+                if not source.startswith("data:") and "://" not in source:   # a path: train.jsonl may be in another folder
+                    parts[i] = {"type": "image", "image": os.path.relpath(Path(path).parent / source, out)}
+            samples.append(line)
         except ValueError as error:
             skipped += 1
             if len(errors) < MAX_ERRORS:
                 errors.append(f"row {number}: {error}")
     random.Random(seed).shuffle(samples)
     n_val = min(round(len(samples) * val_fraction), VAL_MAX_SAMPLES) if val_fraction else 0
-    out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     report: dict[str, Any] = {"skipped": skipped, "errors": errors}
     for name, part in (("train", samples[n_val:]), ("val", samples[:n_val])):
