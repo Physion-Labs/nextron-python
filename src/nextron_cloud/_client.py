@@ -123,12 +123,16 @@ class NexTron:
 
 
 def poll(get: Callable[[], T], done: Callable[[T], bool], timeout: float | None, interval: float) -> T:
-    """Call `get` every `interval` seconds until `done` holds; TimeoutError after `timeout` seconds."""
+    """Call `get` every `interval` seconds until `done` holds; TimeoutError once `timeout` seconds have passed."""
     deadline = None if timeout is None else time.monotonic() + timeout
     while True:
         value = get()
         if done(value):
             return value
-        if deadline is not None and time.monotonic() + interval > deadline:
+        if deadline is None:
+            time.sleep(interval)
+            continue
+        left = deadline - time.monotonic()
+        if left <= 0:
             raise TimeoutError(f"still not done after {timeout} s")
-        time.sleep(interval)
+        time.sleep(min(interval, left))

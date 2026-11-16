@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc10
+
+- A `timeout` runs for its whole length: `wait` calls no longer give up one poll interval early (at once when the
+  timeout was shorter than the interval), and a live `sample` or `train` poll is no longer than the time left.
+
 ## 0.1.0rc9
 
 - Preference training (DPO): `train_type="dpo"` with `beta`, on a dataset of preference pairs (`kind="preference"`):

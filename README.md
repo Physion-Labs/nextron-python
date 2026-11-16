@@ -1,5 +1,10 @@
 # nextron-cloud
 
+[![ci](https://github.com/Physion-Labs/nextron-python/actions/workflows/ci.yml/badge.svg)](https://github.com/Physion-Labs/nextron-python/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/nextron-cloud?include_prereleases)](https://pypi.org/project/nextron-cloud/)
+[![Python](https://img.shields.io/pypi/pyversions/nextron-cloud)](https://pypi.org/project/nextron-cloud/)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 > **Release candidate.** The API may still change before 0.1.0; install with `--prerelease=allow`.
 
 Python SDK and CLI for [NexTron Cloud](https://nextron.physionlabs.ai), which trains open models in two modes:

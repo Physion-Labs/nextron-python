@@ -132,6 +132,12 @@ def test_training_and_checkpoint_are_waited_for_apart(make_client):
     assert client.jobs.wait_checkpoint("job_1").checkpoint_ready
 
 
+def test_a_wait_runs_for_its_whole_timeout_before_it_gives_up(make_client):
+    answers = [JOB | {"state": "running"}, JOB | {"state": "succeeded"}]
+    client = make_client(lambda request: httpx.Response(200, json=answers.pop(0)))
+    assert client.jobs.wait("job_1", timeout=0.2, poll_interval=30).state == "succeeded"
+
+
 def test_a_sweep_started_twice_creates_each_job_once(make_client):
     from nextron_cloud import experiments
     created = {}
@@ -399,3 +405,19 @@ def test_a_live_run_keeps_polling_through_a_restart_of_the_api(make_client):
 
     with make_client(handler).rl.connect("rl_1") as live:
         assert live.sample(["hello"])[0][0].text == "hi"
+
+
+def test_a_live_poll_is_no_longer_than_the_time_left(make_client):
+    holds = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/sample"):
+            return httpx.Response(200, json={"batch": "b1", "prompts": 1})
+        if "wait" in request.url.params:
+            holds.append(request.url.params["wait"])
+        return httpx.Response(200, json={"done": True, "finished": 1, "prompts": 1, "samples": [[
+            {"id": "b1:0:0", "text": "hi", "finish_reason": "stop", "tokens": 1}]]})
+
+    with make_client(handler).rl.connect("rl_1") as live:
+        live.sample(["hello"], timeout=5)
+    assert holds == ["5"]

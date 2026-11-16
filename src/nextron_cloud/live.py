@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 import uuid
@@ -83,7 +84,10 @@ class LiveRun:
     def _wait(self, path: str, timeout: float | None) -> dict[str, Any]:
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
-            answer: dict[str, Any] = self._call("GET", f"{path}?wait={POLL_WAIT}")
+            hold = POLL_WAIT
+            if deadline is not None:
+                hold = max(1, min(POLL_WAIT, math.ceil(deadline - time.monotonic())))
+            answer: dict[str, Any] = self._call("GET", f"{path}?wait={hold}")
             if answer.get("error"):
                 raise NexTronError(answer["error"])
             if answer["done"]:
