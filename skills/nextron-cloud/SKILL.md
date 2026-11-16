@@ -15,7 +15,7 @@ NexTron Cloud trains open models on its own H100s, in two modes:
   or the `tinker` SDK and tinker-cookbook unchanged); NexTron runs each sample and each optimizer step. For custom
   RL environments, tools and rewards. Billed by time.
 
-Nothing heavy runs on the user's machine in either mode. Text only.
+Nothing heavy runs on the user's machine in either mode. Text, and images for SFT on two models (references/data.md).
 
 Everything below works from Python (`from nextron_cloud import NexTron`) or the shell (`nextron-cloud ...`, every
 command prints JSON). Read the reference for each step when you reach it (`nextron-cloud guide <topic>` prints it,
@@ -69,7 +69,8 @@ https://nextron.physionlabs.ai, opens **API keys** (only an organisation owner c
    then. The checkpoint uploads afterwards (minutes to an hour by model size) and stays downloadable for 30 days:
    `jobs.wait_checkpoint` / `download_checkpoint` only when the owner needs the weights.
 7. **Poll slowly** (jobs every 30 s or more) and do not leave a job unwatched without telling the owner its id.
-8. Text only: samples with images, audio or video are refused.
+8. Images (JPEG, PNG) train on Qwen3.8-27B and Gemma-4-26B-A4B with SFT, for organisations they are opened to
+   (references/data.md); audio and video are refused.
 
 ## An experiment, end to end
 

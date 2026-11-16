@@ -27,7 +27,8 @@ A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line
 - Roles are `system`, `user`, `assistant`. At most one system message, and only first.
 - At least one non-empty assistant message.
 - `content` is a string, or OpenAI content parts that are all `{"type": "text", "text": ...}`.
-- Text only: a sample with an image, audio or video part, or an `image(s)` / `video(s)` / `audio(s)` field, is refused.
+- Audio and video are refused, and so is an `image(s)` / `video(s)` / `audio(s)` field beside the messages. Images go
+  inside user messages: see [Images](#images).
 
 These are converted to `messages` (by `to_messages` / `write_jsonl` locally, and by the server on upload):
 
@@ -138,3 +139,26 @@ fine.
 
 Limits: 50 datasets an account (delete old ones with `datasets.delete`), validation sets at most 5,000 samples. Sample
 datasets (`sample=True` in `datasets.list()`) can be trained on by every account and cannot be deleted.
+
+## Images
+
+Qwen3.8-27B and Gemma-4-26B-A4B train on images (SFT, full-parameter or LoRA). Images are opened organisation by
+organisation: if `datasets upload` answers 403, yours is not enabled yet.
+
+```json
+{"messages": [{"role": "user", "content": [{"type": "image", "image": "photos/cat.jpg"}, {"type": "text", "text": "What is this?"}]},
+              {"role": "assistant", "content": "A cat."}]}
+```
+
+- An image is a file path relative to the JSONL file, or a base64 `data:` URI. OpenAI's
+  `{"type": "image_url", "image_url": {"url": ...}}` is read the same way. A URL is not fetched: download the file first.
+- JPEG and PNG only, up to 20 MB and 36 million pixels each, at most 16 a sample, in user messages only.
+- Do not write `<image>`, `<video>` or `<audio>` in the text of such a dataset.
+- `datasets check` reads every image file; `datasets upload` packs the samples and the image files into one upload
+  (each file once, up to 20 GB together). Nothing else changes: `wait`, then train.
+- An image counts as tokens, and is billed as them: up to 514 on Qwen3.8-27B (a 32-pixel square each, so a small image
+  costs less), about 260-282 on Gemma-4-26B-A4B whatever its size. `tokens` on the dataset includes them per model.
+- A sample with images is never cut: a job is refused if the dataset's longest sample is over `max_seq_len`.
+- Training reads a copy of each image: 8-bit RGB, transparency on white, turned as its EXIF says, and scaled down
+  only above 1.6 million pixels.
+- Not with images yet: validation sets, DPO, RFT, Serverless RL, samples over one GPU's row (64K tokens on Qwen).

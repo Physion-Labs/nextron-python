@@ -1,6 +1,6 @@
 """Training data: the sample format, conversion from common formats, and the server's format check run locally.
 
-A dataset is a JSONL file, one sample per line, text only:
+A dataset is a JSONL file, one sample per line:
 
     {"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "..."},
                   {"role": "assistant", "content": "..."}]}
@@ -13,9 +13,17 @@ At least one assistant message is needed, and a system message may only come fir
     {"prompt": ..., "completion" | "response": ...}                                  prompt / completion
     {"query" | "question": ..., "response" | "answer": ...}                          question / answer (OpenOrca)
     {"problem": ..., "solution": ...}, {"input": ..., "output": ...}                 problem / solution
-    "content": [{"type": "text", "text": ...}, ...]                                   OpenAI content parts, text only
+    "content": [{"type": "text", "text": ...}, ...]                                   OpenAI content parts
 
 An optional top-level "system" or "system_prompt" string becomes the system message.
+
+A user message of a "messages" sample may carry images (JPEG or PNG, up to 16 a sample, 20 MB each), as content parts:
+
+    {"role": "user", "content": [{"type": "image", "image": "photos/cat.jpg"}, {"type": "text", "text": "What is this?"}]}
+
+An image is a file path (relative to the JSONL file) or a base64 "data:" URI; OpenAI's {"type": "image_url",
+"image_url": {"url": ...}} is read the same way. A URL is not fetched: download the file first. Uploading packs the
+image files with the samples (`write_bundle`).
 
 Reinforcement learning (train_type "grpo") takes prompts with the answer the reward checks the model's reply against,
 one kind per file:
@@ -34,8 +42,13 @@ Preference training (train_type "dpo") takes a prompt with a preferred and a rej
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
 import json
 import os
+import tarfile
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,24 +62,78 @@ SHAREGPT_ROLES = {"human": "user", "user": "user", "gpt": "assistant", "assistan
 PAIRS = (("prompt", "completion"), ("prompt", "response"), ("query", "response"), ("question", "answer"), ("question", "response"),
          ("problem", "solution"), ("input", "output"))
 MEDIA_FIELDS = ("image", "images", "video", "videos", "audio", "audios")
-MEDIA_ERROR = "has an image, audio or video part; NexTron Cloud trains on text only for now"
+MEDIA_ERROR = ("has an image, audio or video part; images go in the user messages of a \"messages\" sample "
+               "(JPEG and PNG), audio and video are not trained on")
+PLACEHOLDERS = ("<image>", "<video>", "<audio>")   # the trainer reads these in a sample's text as media
+IMAGE_TYPES = {b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
+MAX_IMAGE_BYTES = 20 * 1000**2
+MAX_IMAGES = 16   # per sample
 MAX_LINE_BYTES = 32 << 20
 MAX_FILE_BYTES = 5 * 1000**3
 MAX_ERRORS = 5  # the server also reports only the first five
 
 
-def _text(content: Any) -> str:
+def _image(part: dict[str, Any]) -> Any:
+    """What an image part names (a path, a data: URI or a bundle's "sha256:..."); None for a part of another type."""
+    if part.get("type") == "image":
+        return part.get("image")
+    if part.get("type") == "image_url":
+        url = part.get("image_url")
+        return url.get("url") if isinstance(url, dict) else url
+    return None
+
+
+def _text(content: Any, images: list[str] | None = None) -> str:
+    """A message's content as text. With `images`, an image part is "<image>" in the text and what it names is
+    appended to the list; without, every part must be text."""
     if isinstance(content, str):
-        return content
-    if isinstance(content, list) and all(isinstance(p, dict) for p in content):
-        if any(p.get("type") != "text" for p in content):
+        parts: list[dict[str, Any]] = [{"type": "text", "text": content}]
+    elif isinstance(content, list) and all(isinstance(p, dict) for p in content):
+        parts = content
+    else:
+        raise ValueError('every message needs a text "content"')
+    out = []
+    for part in parts:
+        if part.get("type") == "text":
+            piece = str(part.get("text", ""))
+            if images is not None and any(tag in piece for tag in PLACEHOLDERS):
+                raise ValueError("has <image>, <video> or <audio> written in its text, which a dataset with images "
+                                 "cannot hold: the trainer reads them as media")
+            out.append(piece)
+            continue
+        source = _image(part)
+        if images is None or not isinstance(source, str):
             raise ValueError(MEDIA_ERROR)
-        return "".join(str(p.get("text", "")) for p in content)
-    raise ValueError('every message needs a text "content"')
+        images.append(source)
+        out.append("<image>")
+    return "".join(out)
 
 
-def to_messages(sample: Any) -> list[Message]:
-    """The sample as chat messages. ValueError says why it cannot be trained on."""
+def read_image(source: str, base: Path) -> tuple[str, bytes]:
+    """("jpg" | "png", the file's bytes) of an image a sample names: a path relative to `base`, or a data: URI."""
+    if source.startswith("data:"):
+        try:
+            data = base64.b64decode(source.split(",", 1)[1], validate=True)
+        except (IndexError, ValueError):
+            raise ValueError("has an image whose data: URI is not base64") from None
+    elif "://" in source:
+        raise ValueError(f"names an image by URL ({source[:60]}); download it and give the file's path")
+    else:
+        try:
+            data = (base / source).read_bytes()
+        except OSError:
+            raise ValueError(f"names an image file that cannot be read: {source[:120]}") from None
+    kind = next((ext for magic, ext in IMAGE_TYPES.items() if data.startswith(magic)), None)
+    if kind is None:
+        raise ValueError(f"has an image that is neither JPEG nor PNG ({source[:60]}); convert it")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError(f"has an image over {MAX_IMAGE_BYTES // 1000**2} MB ({source[:60]})")
+    return kind, data
+
+
+def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
+    """The sample as chat messages. ValueError says why it cannot be trained on. `images`: a list that takes what
+    each image of the user messages names, in order ("<image>" stands for it in the text); without it images are refused."""
     if isinstance(sample, list):
         raise ValueError("is a JSON array; upload JSONL: one JSON object per line")
     if not isinstance(sample, dict):
@@ -83,7 +150,9 @@ def to_messages(sample: Any) -> list[Message]:
         for m in source:
             if not isinstance(m, dict) or m.get("role") not in ROLES:
                 raise ValueError('every message needs a "role" (system, user or assistant)')
-            messages.append({"role": m["role"], "content": _text(m.get("content"))})
+            messages.append({"role": m["role"], "content": _text(m.get("content"), images if m["role"] == "user" else None)})
+        if images and len(images) > MAX_IMAGES:
+            raise ValueError(f"has {len(images)} images; a sample takes at most {MAX_IMAGES}")
     elif "conversations" in sample or "conversation" in sample:
         turns = sample.get("conversations", sample.get("conversation"))
         if not isinstance(turns, list) or not turns:
@@ -174,14 +243,14 @@ def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
     return {"messages": messages[:-1], "chosen": chosen, "rejected": rejected}
 
 
-def to_sample(sample: Any) -> dict[str, Any]:
+def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
     """The sample as the server stores it: {"messages"} for a chat, {"messages", "answer"} for RL, {"messages",
-    "chosen", "rejected"} for DPO."""
+    "chosen", "rejected"} for DPO. `images`: as in `to_messages`, for a chat."""
     if is_rl(sample):
         return to_rl(sample)
     if is_preference(sample):
         return to_preference(sample)
-    return {"messages": to_messages(sample)}
+    return {"messages": to_messages(sample, images)}
 
 
 def write_jsonl(samples: Iterable[Any], path: str | os.PathLike[str]) -> int:
@@ -204,6 +273,7 @@ class CheckResult:
     chars: int = 0  # message text; a token is roughly 3-4 characters of English
     errors: list[str] = field(default_factory=list)
     kind: str | None = None  # "chat", "rl" for prompts with answers, or "preference" for DPO pairs
+    images: int = 0  # image parts in the samples; with any, the upload is a bundle (write_bundle)
 
     @property
     def ok(self) -> bool:
@@ -233,7 +303,10 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
             if not line:
                 continue
             try:
-                row = to_sample(json.loads(line))
+                found: list[str] = []
+                row = to_sample(json.loads(line), found)
+                for source in found:
+                    read_image(source, path.parent)
             except json.JSONDecodeError as error:
                 _note(result, f"line {number}: not valid JSON ({error.msg})")
                 continue
@@ -241,6 +314,7 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                 _note(result, f"line {number}: {error}")
                 continue
             result.samples += 1
+            result.images += len(found)
             replies = [row[k] for k in ("chosen", "rejected") if k in row]
             result.chars += sum(len(m["content"]) for m in row["messages"] + replies)
             kinds.add("rl" if "answer" in row else "preference" if "chosen" in row else "chat")
@@ -250,6 +324,49 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
         result.errors.append("the file mixes chat samples, prompts with answers (RL) and preference pairs; a dataset holds one kind")
     result.kind = kinds.pop() if len(kinds) == 1 else None
     return result
+
+
+def write_bundle(path: str | os.PathLike[str], out: str | os.PathLike[str]) -> int:
+    """Pack a JSONL file whose samples carry images into the tar the server takes: each image once, as
+    images/<SHA-256 of its bytes>.jpg|png, then the samples as data.jsonl with every image named "sha256:...".
+    Returns the number of image files. ValueError names the first line that cannot be packed."""
+    path = Path(path)
+    packed: set[str] = set()
+    with tarfile.open(out, "w") as tar, tempfile.TemporaryFile() as samples:
+        def add(name: str, size: int, file: Any) -> None:
+            info = tarfile.TarInfo(name)
+            info.size = size
+            tar.addfile(info, file)
+
+        with path.open("rb") as f:
+            for number, raw in enumerate(f, 1):
+                line = raw.removeprefix(b"\xef\xbb\xbf").decode("utf-8").strip()
+                if not line:
+                    continue
+                sample = json.loads(line)
+                messages = sample.get("messages") if isinstance(sample, dict) else None
+                for message in messages if isinstance(messages, list) else []:
+                    parts = message.get("content") if isinstance(message, dict) else None
+                    if not isinstance(parts, list):
+                        continue
+                    for i, part in enumerate(parts):
+                        source = _image(part) if isinstance(part, dict) else None
+                        if not isinstance(source, str):
+                            continue
+                        try:
+                            kind, data = read_image(source, path.parent)
+                        except ValueError as error:
+                            raise ValueError(f"line {number}: {error}") from None
+                        sha = hashlib.sha256(data).hexdigest()
+                        if sha not in packed:
+                            packed.add(sha)
+                            add(f"images/{sha}.{kind}", len(data), io.BytesIO(data))
+                        parts[i] = {"type": "image", "image": f"sha256:{sha}"}
+                samples.write(json.dumps(sample, ensure_ascii=False).encode() + b"\n")
+        size = samples.tell()
+        samples.seek(0)
+        add("data.jsonl", size, samples)
+    return len(packed)
 
 
 def _note(result: CheckResult, error: str) -> None:

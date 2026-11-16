@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0rc11
+
+- Datasets with images: a user message of a `messages` sample can carry JPEG or PNG images as content parts
+  (`{"type": "image", "image": "photos/cat.jpg"}`, a path relative to the JSONL file or a base64 `data:` URI; OpenAI's
+  `image_url` part is read the same way). `datasets check` reads every image, `datasets upload` sends the samples and
+  the image files in one upload, and `Dataset.images` is their number. Qwen3.8-27B and Gemma-4-26B-A4B train on them
+  (SFT, full-parameter or LoRA), for organisations images are opened to. Guide: `references/data.md`, "Images".
+
 ## 0.1.0rc10
 
 - A `timeout` runs for its whole length: `wait` calls no longer give up one poll interval early (at once when the

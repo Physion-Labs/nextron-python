@@ -85,6 +85,7 @@ class Dataset(_Model):
     source: str | None = None
     tokens: dict[str, Any] | None = None  # per model: total, longest sample (RL: longest prompt), samples over each length
     kind: Literal["chat", "rl", "preference"] = "chat"  # rl: prompts with answers (grpo); preference: pairs (dpo)
+    images: int | None = None  # image files of a dataset uploaded with images; None for a text dataset
 
     @property
     def done(self) -> bool:

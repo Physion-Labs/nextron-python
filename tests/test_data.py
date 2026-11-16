@@ -28,7 +28,7 @@ def test_known_formats_become_messages(sample):
 
 @pytest.mark.parametrize("sample, error", [
     ({"messages": [USER]}, "assistant"),
-    ({"messages": [USER, ASSISTANT], "images": ["a.png"]}, "text only"),
+    ({"messages": [USER, ASSISTANT], "images": ["a.png"]}, "images go in the user messages"),
     ({"messages": [USER, {"role": "system", "content": "s"}, ASSISTANT]}, "first"),
 ])
 def test_unusable_samples_say_why(sample, error):
@@ -100,3 +100,38 @@ def test_rl_samples_keep_their_answer_and_a_file_holds_one_kind(tmp_path: Path):
     report = prepare_file(csv, tmp_path / "out", val_fraction=0, prompt_column="question", answer_column="final")
     answers = sorted(json.loads(line)["answer"] for line in Path(report["train"]["path"]).read_text().splitlines())
     assert answers == ["4", "6"]
+
+
+def test_samples_with_images_are_checked_and_packed(tmp_path: Path):
+    import hashlib
+    import tarfile
+
+    from nextron_cloud.data import write_bundle
+
+    png, jpg = b"\x89PNG\r\n\x1a\n" + b"a", b"\xff\xd8\xff" + b"b"
+    (tmp_path / "photos").mkdir()
+    (tmp_path / "photos" / "cat.png").write_bytes(png)
+    uri = "data:image/jpeg;base64," + __import__("base64").b64encode(jpg).decode()
+    rows = [
+        {"messages": [{"role": "user", "content": [{"type": "image", "image": "photos/cat.png"}, {"type": "text", "text": "what"}]},
+                      {"role": "assistant", "content": "a cat"}]},
+        {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": uri}},
+                                                   {"type": "image", "image": "photos/cat.png"}, {"type": "text", "text": "both"}]},
+                      {"role": "assistant", "content": "two"}]},
+    ]
+    path = tmp_path / "data.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    result = check_file(path)
+    assert result.ok and (result.samples, result.images) == (2, 3)
+    assert write_bundle(path, tmp_path / "bundle.tar") == 2   # the same file twice is packed once
+    a, b = hashlib.sha256(png).hexdigest(), hashlib.sha256(jpg).hexdigest()
+    with tarfile.open(tmp_path / "bundle.tar") as tar:
+        assert tar.getnames() == [f"images/{a}.png", f"images/{b}.jpg", "data.jsonl"]   # the samples last
+        packed = [json.loads(line) for line in tar.extractfile("data.jsonl")]
+    assert [p["image"] for p in packed[1]["messages"][0]["content"][:2]] == [f"sha256:{b}", f"sha256:{a}"]
+
+    for image, error in [("https://example.com/cat.png", "download it"), ("photos/missing.png", "cannot be read"),
+                         ("data.jsonl", "neither JPEG nor PNG")]:
+        path.write_text(json.dumps({"messages": [{"role": "user", "content": [{"type": "image", "image": image}]},
+                                                 {"role": "assistant", "content": "x"}]}) + "\n")
+        assert error in check_file(path).errors[0]

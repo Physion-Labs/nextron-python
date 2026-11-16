@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import builtins
 import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from ._client import NexTronError, poll
-from .data import check_file
+from .data import check_file, write_bundle
 from .types import Dataset
 
 if TYPE_CHECKING:
@@ -32,21 +33,26 @@ class Datasets:
         self._client._request("DELETE", f"/v1/datasets/{dataset_id}")
 
     def upload(self, path: str | os.PathLike[str], *, name: str | None = None, check: bool = True) -> Dataset:
-        """Upload a JSONL file. With `check`, the server's format check runs locally first, so a bad file fails before
-        it is sent. The dataset is "checking" when this returns; `wait` for "ready"."""
+        """Upload a JSONL file; one whose samples carry images goes with its image files, packed into one tar. With
+        `check`, the server's format check runs locally first, so a bad file fails before it is sent. The dataset is
+        "checking" when this returns; `wait` for "ready"."""
         path = Path(path)
         if check:
             result = check_file(path)
             if not result.ok:
                 raise NexTronError(f"{path.name} would not pass the format check: " + "; ".join(result.errors))
-        size = path.stat().st_size
-        created = self._client._post("/v1/datasets", {"name": name or path.name, "bytes": size})
-        with httpx.Client(timeout=600) as storage, path.open("rb") as f:
-            if "part_urls" in created:
-                for url in created["part_urls"]:
-                    _put(storage, url, f.read(created["part_bytes"]), {})
-            else:
-                _put(storage, created["upload_url"], f.read(), created["upload_headers"])
+        with tempfile.TemporaryDirectory() as work:
+            bundle = Path(work) / "bundle.tar"
+            images = write_bundle(path, bundle) > 0
+            file = bundle if images else path
+            body = {"name": name or path.name, "bytes": file.stat().st_size} | ({"images": True} if images else {})
+            created = self._client._post("/v1/datasets", body)
+            with httpx.Client(timeout=600) as storage, file.open("rb") as f:
+                if "part_urls" in created:
+                    for url in created["part_urls"]:
+                        _put(storage, url, f.read(created["part_bytes"]), {})
+                else:
+                    _put(storage, created["upload_url"], f.read(), created["upload_headers"])
         return Dataset.model_validate(self._client._post(f"/v1/datasets/{created['id']}/complete"))
 
     def huggingface_splits(self, url: str, *, hf_token: str | None = None) -> builtins.list[dict[str, Any]]:
