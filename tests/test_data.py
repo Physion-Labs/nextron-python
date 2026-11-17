@@ -82,11 +82,14 @@ def test_prepare_file_refuses_column_options_that_do_not_go_together(tmp_path: P
 
 def test_prepare_file_leaves_out_a_row_that_lacks_a_column(tmp_path: Path):
     from nextron_cloud.data import prepare_file
-    rows = [{"question": "1+1?", "context": "sums", "reply": "2"}, {"question": "2+2?", "reply": "4"}, {"question": "3+3?"}]
-    path = tmp_path / "rows.jsonl"
-    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    rows = [{"question": "1+1?", "context": "sums", "reply": "2"}, {"question": "2+2?", "context": "", "reply": "4"},
+            {"question": "3+3?", "reply": "6"}, {"question": "4+4?", "context": "sums"}, None, ["5+5?", "sums", "10"]]
+    path = tmp_path / "rows.json"
+    path.write_text(json.dumps(rows))
     report = prepare_file(path, tmp_path / "out", val_fraction=0, prompt_column=["question", "context"], response_column="reply")
-    assert (report["train"]["samples"], report["skipped"]) == (2, 1)
+    assert (report["train"]["samples"], report["skipped"]) == (2, 4)   # an empty context is kept, a missing one is not
+    assert report["errors"][:2] == ["row 3: has no column context", "row 4: has no column reply"]
+    assert prepare_file(path, tmp_path / "plain", val_fraction=0)["skipped"] == 6   # no columns named: none is a sample
 
 
 def test_preference_pairs_in_three_formats(tmp_path: Path):
@@ -201,6 +204,46 @@ def test_a_media_tag_in_text_is_refused_only_in_a_file_with_images(tmp_path: Pat
     assert [e[:7] for e in check(picture, tagged).errors] == ["line 2:"]   # a bundle: the server refuses the tag
     assert [e[:7] for e in check(tagged, {"oops": 1}, picture).errors] == ["line 1:", "line 2:"]
     assert [e[:7] for e in check(both).errors] == ["line 1:"]
+    for row in ({"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "an <image> tag"}]},
+                {"system": "<audio> is a tag", "messages": [USER, ASSISTANT]},
+                {"prompt": "q", "completion": "<video>"}):
+        assert [e[:7] for e in check(picture, row).errors] == ["line 2:"]   # every role and format of a file with images
     assert write_jsonl([tagged], tmp_path / "out.jsonl") == 1
     with pytest.raises(ValueError, match="sample 1: has <image>"):
         write_jsonl([both], tmp_path / "out.jsonl")
+    with pytest.raises(ValueError, match="sample 2: has <image>"):
+        write_jsonl([picture, tagged], tmp_path / "out.jsonl")
+    with pytest.raises(ValueError, match="sample 1: .*cannot be read"):
+        write_jsonl([{"messages": [{"role": "user", "content": [{"type": "image", "image": "missing.png"}]}, ASSISTANT]}],
+                    tmp_path / "out.jsonl")
+
+    missing = {"messages": [{"role": "user", "content": [{"type": "image", "image": "missing.png"}]}, ASSISTANT]}
+    path.write_text("".join(json.dumps(r) + "\n" for r in (picture, tagged, missing)))
+    report = prepare_file(path, tmp_path / "out", val_fraction=0)
+    assert report["skipped"] == 2 and [e[:6] for e in sorted(report["errors"])] == ["row 2:", "row 3:"]
+    assert check_file(report["train"]["path"]).ok
+
+
+def test_a_file_with_images_is_held_to_the_bundle_limits(tmp_path: Path, monkeypatch):
+    from nextron_cloud import data
+
+    png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 64, 48) + bytes(600)
+    uri = "data:image/png;base64," + __import__("base64").b64encode(png).decode()
+    path = tmp_path / "data.jsonl"
+    path.write_text(json.dumps({"messages": [{"role": "user", "content": [{"type": "image", "image": uri}]}, ASSISTANT]}) + "\n")
+    monkeypatch.setattr(data, "MAX_FILE_BYTES", 500)
+    assert check_file(path).ok   # over the limit of a file, but its samples without the image are not
+    (tmp_path / "big.png").write_bytes(png)
+    path.write_text(json.dumps({"messages": [{"role": "user", "content": [{"type": "image", "image": "big.png"}]}, ASSISTANT]}) + "\n")
+    monkeypatch.setattr(data, "BUNDLE_MAX_BYTES", 600)
+    assert "the samples and their images are over" in check_file(path).errors[0]
+    monkeypatch.setattr(data, "BUNDLE_MAX_IMAGES", 0)
+    assert "different images" in check_file(path).errors[0]
+    path.write_text(json.dumps({"messages": [{"role": "user", "content": "x" * 600}, ASSISTANT]}) + "\n")
+    assert check_file(path).errors == ["the file is over 0 GB"]
+
+
+def test_an_rl_or_preference_sample_with_a_blank_prompt_is_refused():
+    for sample in ({"prompt": "   ", "answer": "4"}, {"messages": [{"role": "user", "content": "\n"}], "chosen": "a", "rejected": "b"}):
+        with pytest.raises(ValueError, match="needs a non-empty last user message"):
+            to_sample(sample)

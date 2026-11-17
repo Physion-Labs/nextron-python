@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0rc15
+
+- `datasets prepare` with column options leaves out and counts a row that lacks one of the named columns (it kept the
+  row without that part of the prompt) and a row that is not an object (it stopped with a traceback).
+- An RL or preference sample whose prompt (its last user message) is empty or only whitespace does not pass
+  `datasets check`, as on the server.
+- In a file with images, `datasets check` refuses `<image>`, `<video>` or `<audio>` written in any message, the system
+  prompt and every sample format, as the trainer reads them all; it checked only the text of user messages.
+- `datasets check` holds a file with images to a bundle's limits (its samples without the images up to 5 GB, with them
+  up to 20 GB, at most 200,000 different images); it refused such a file over 5 GB, data URIs included.
+- `datasets prepare` reads each image and leaves out a row whose image cannot be used, and in a file with images a row
+  without images that has a media tag in its text; `write_jsonl` raises on both. They passed and the check failed later.
+
 ## 0.1.0rc14
 
 - `jobs.wait_checkpoint` and `jobs.events(until="checkpoint")` end for an RL run that trained no step and so saved no

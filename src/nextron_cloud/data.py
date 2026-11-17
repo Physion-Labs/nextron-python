@@ -74,6 +74,9 @@ JPEG_SIZE_MARKERS = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
 MAX_IMAGES = 16   # per sample
 MAX_LINE_BYTES = 32 << 20
 MAX_FILE_BYTES = 5 * 1000**3
+BUNDLE_MAX_BYTES = 20 * 1000**3   # a file with images is uploaded as one tar of the samples and the images
+BUNDLE_MAX_IMAGES = 200_000
+IMAGE_REF_CHARS = len("sha256:") + 64   # how a bundle names an image
 MAX_ERRORS = 5  # the server also reports only the first five
 
 
@@ -92,9 +95,9 @@ def _image(part: dict[str, Any]) -> Any:
     return None
 
 
-def _text(content: Any, images: list[str] | None = None) -> str:
+def _text(content: Any, images: list[str] | None = None, tags: bool = False) -> str:
     """A message's content as text. With `images`, an image part is "<image>" in the text and what it names is
-    appended to the list; without, every part must be text."""
+    appended to the list; without, every part must be text. With `tags`, a media tag written in the text is refused."""
     if isinstance(content, str):
         parts: list[dict[str, Any]] = [{"type": "text", "text": content}]
     elif isinstance(content, list) and all(isinstance(p, dict) for p in content):
@@ -105,7 +108,7 @@ def _text(content: Any, images: list[str] | None = None) -> str:
     for part in parts:
         if part.get("type") == "text":
             piece = str(part.get("text", ""))
-            if images is not None and any(tag in piece for tag in PLACEHOLDERS):
+            if tags and any(tag in piece for tag in PLACEHOLDERS):
                 raise _Tagged("has <image>, <video> or <audio> written in its text, which a dataset with images "
                               "cannot hold: the trainer reads them as media")
             out.append(piece)
@@ -202,8 +205,9 @@ def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
         raise ValueError("is not a JSON object")
     if any(sample.get(f) for f in MEDIA_FIELDS):
         raise ValueError(MEDIA_ERROR)
+    tags = images is not None   # the trainer reads a media tag anywhere in a sample of a file with images
     given = next((sample[k] for k in ("system", "system_prompt") if isinstance(sample.get(k), str) and sample[k]), None)
-    system = [{"role": "system", "content": given}] if given else []
+    system = [{"role": "system", "content": _text(given, tags=tags)}] if given else []
     if "messages" in sample:
         source = sample["messages"]
         if not isinstance(source, list) or not source:
@@ -212,7 +216,8 @@ def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
         for m in source:
             if not isinstance(m, dict) or m.get("role") not in ROLES:
                 raise ValueError('every message needs a "role" (system, user or assistant)')
-            messages.append({"role": m["role"], "content": _text(m.get("content"), images if m["role"] == "user" else None)})
+            content = _text(m.get("content"), images if m["role"] == "user" else None, tags)
+            messages.append({"role": m["role"], "content": content})
         if images and len(images) > MAX_IMAGES:
             raise ValueError(f"has {len(images)} images; a sample takes at most {MAX_IMAGES}")
     elif "conversations" in sample or "conversation" in sample:
@@ -224,17 +229,19 @@ def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
             role = SHAREGPT_ROLES.get(str(t.get("from", t.get("role", ""))).lower()) if isinstance(t, dict) else None
             if role is None:
                 raise ValueError('every turn needs "from" (human, gpt or system) and "value"')
-            messages.append({"role": role, "content": _text(t.get("value", t.get("content")))})
+            messages.append({"role": role, "content": _text(t.get("value", t.get("content")), tags=tags)})
     elif "instruction" in sample and ("output" in sample or "response" in sample):
         answer = "output" if "output" in sample else "response"
         prompt = "\n\n".join(str(sample[k]) for k in ("instruction", "input", "context") if sample.get(k))
-        messages = [{"role": "user", "content": prompt}, {"role": "assistant", "content": _text(sample[answer])}]
+        messages = [{"role": "user", "content": _text(prompt, tags=tags)},
+                    {"role": "assistant", "content": _text(sample[answer], tags=tags)}]
     else:
         pair = next((p for p in PAIRS if p[0] in sample and p[1] in sample), None)
         if pair is None:
             raise ValueError('is not a format we know: use "messages", or one of conversations, instruction/output, '
                              "instruction/response, prompt/completion, query/response, question/answer, problem/solution, input/output")
-        messages = [{"role": "user", "content": _text(sample[pair[0]])}, {"role": "assistant", "content": _text(sample[pair[1]])}]
+        messages = [{"role": "user", "content": _text(sample[pair[0]], tags=tags)},
+                    {"role": "assistant", "content": _text(sample[pair[1]], tags=tags)}]
     if not any(m["role"] == "assistant" and m["content"] for m in messages):
         raise ValueError("needs at least one non-empty assistant message to learn from")
     messages = system + messages
@@ -263,7 +270,7 @@ def to_rl(sample: dict[str, Any]) -> dict[str, Any]:
     else:
         chat = {**sample, "completion": "-"}
     # Checked as a chat with a placeholder reply, so prompts follow the same rules as chat samples.
-    row = {"messages": to_messages(chat)[:-1], "answer": answer}
+    row = {"messages": _prompt_of(chat), "answer": answer}
     if "metadata" in sample:  # anything else a remote reward needs (test cases, rubric), passed to it unchanged
         row["metadata"] = sample["metadata"]
     return row
@@ -287,6 +294,14 @@ def _reply(value: Any, name: str) -> Message:
     return {"role": "assistant", "content": content}
 
 
+def _prompt_of(chat: dict[str, Any]) -> list[Message]:
+    """An RL or preference sample's prompt: the chat without its last message, the reply to its last user message."""
+    messages = to_messages(chat)
+    if not messages[-2]["content"].strip():
+        raise ValueError("needs a non-empty last user message: the prompt the model replies to")
+    return messages[:-1]
+
+
 def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
     """A DPO sample as {"messages", "chosen", "rejected"}. ValueError says why it cannot be used."""
     chosen, rejected = sample["chosen"], sample["rejected"]
@@ -301,8 +316,8 @@ def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(prompt, list) or not prompt or not isinstance(prompt[-1], dict) or prompt[-1].get("role") != "user":
         raise ValueError("a preference sample's prompt ends with the user's turn: the replies answer it")
     chosen, rejected = _reply(chosen, "chosen"), _reply(rejected, "rejected")
-    messages = to_messages({**sample, "messages": prompt + [chosen]})  # the prompt follows the same rules as chat samples
-    return {"messages": messages[:-1], "chosen": chosen, "rejected": rejected}
+    messages = _prompt_of({**sample, "messages": prompt + [chosen]})  # the prompt follows the same rules as chat samples
+    return {"messages": messages, "chosen": chosen, "rejected": rejected}
 
 
 def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
@@ -315,30 +330,40 @@ def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
     return {"messages": to_messages(sample, images)}
 
 
-def _line(sample: Any) -> Any:
-    """The sample as a line of a JSONL file: in the server's form, or as it is when it has images (they stay content parts)."""
+def _line(sample: Any) -> tuple[Any, str | None]:
+    """The sample as a line of a JSONL file: in the server's form, or as it is when it has images (they stay content
+    parts). Second, for a sample without images whose text holds a media tag, the error it is in a file with images."""
     images: list[str] = []
     try:
         row = to_sample(sample, images)
-    except _Tagged:
+    except _Tagged as error:
         if any(_image_parts(sample)):
             raise
-        return to_sample(sample)   # no image of its own: `check_file` says whether the file it ends up in has any
-    return sample if images else row
+        return to_sample(sample), str(error)
+    return (sample if images else row), None
 
 
 def write_jsonl(samples: Iterable[Any], path: str | os.PathLike[str]) -> int:
     """Write samples in any format above as JSONL in the server's form; returns how many. Raises on the first bad one.
-    A sample with images is written as it is; its image paths are read relative to `path`'s folder."""
+    A sample with images is written as it is; its images are read, paths relative to `path`'s folder."""
     count = 0
+    with_images = False
+    tagged = None   # the first sample without images whose text holds a media tag
     with Path(path).open("w", encoding="utf-8") as out:
         for number, sample in enumerate(samples, 1):
             try:
-                row = _line(sample)
+                row, tag_error = _line(sample)
+                for _, _, source in _image_parts(row):
+                    read_image(source, Path(path).parent)
+                    with_images = True
             except ValueError as error:
                 raise ValueError(f"sample {number}: {error}") from None
+            if tag_error and tagged is None:
+                tagged = f"sample {number}: {tag_error}"
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
             count += 1
+    if with_images and tagged:
+        raise ValueError(tagged)
     return count
 
 
@@ -359,9 +384,12 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
     """Run the server's format check on a local JSONL file. Token counts per model come from the server after upload."""
     path = Path(path)
     result = CheckResult()
-    if path.stat().st_size > MAX_FILE_BYTES:
-        result.errors.append(f"the file is over {MAX_FILE_BYTES // 1000**3} GB")
+    size = path.stat().st_size
+    if size > BUNDLE_MAX_BYTES:
+        result.errors.append(f"the file is over {BUNDLE_MAX_BYTES // 1000**3} GB")
         return result
+    unique: dict[str, int] = {}   # SHA-256 -> bytes of each image, packed once in a bundle
+    references = 0   # characters of the samples that name images; a bundle names each by its SHA-256
     kinds = set()
     tagged: list[str] = []   # lines without images whose text holds a media tag: errors if the file has images
     with path.open("rb") as f:
@@ -390,7 +418,9 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                     if len(tagged) < MAX_ERRORS:
                         tagged.append(f"line {number}: {error}")
                 for source in found:
-                    read_image(source, path.parent)
+                    _, data = read_image(source, path.parent)
+                    unique[hashlib.sha256(data).hexdigest()] = len(data)
+                    references += len(source) - IMAGE_REF_CHARS
             except json.JSONDecodeError as error:
                 _note(result, f"line {number}: not valid JSON ({error.msg})")
                 continue
@@ -402,8 +432,17 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
             replies = [row[k] for k in ("chosen", "rejected") if k in row]
             result.chars += sum(len(m["content"]) for m in row["messages"] + replies)
             kinds.add("rl" if "answer" in row else "preference" if "chosen" in row else "chat")
-    if result.images and tagged:   # the upload is a bundle
+    if result.images:   # the upload is a bundle
         result.errors = sorted(result.errors + tagged, key=lambda error: int(error.split(":")[0].removeprefix("line ")))[:MAX_ERRORS]
+        samples_bytes = size - references
+        if len(unique) > BUNDLE_MAX_IMAGES:
+            result.errors.append(f"the file has {len(unique):,} different images; a dataset takes at most {BUNDLE_MAX_IMAGES:,}")
+        if samples_bytes > MAX_FILE_BYTES:
+            result.errors.append(f"the samples without their images are over {MAX_FILE_BYTES // 1000**3} GB")
+        elif samples_bytes + sum(unique.values()) > BUNDLE_MAX_BYTES:
+            result.errors.append(f"the samples and their images are over {BUNDLE_MAX_BYTES // 1000**3} GB")
+    elif size > MAX_FILE_BYTES:
+        result.errors.append(f"the file is over {MAX_FILE_BYTES // 1000**3} GB")
     if not result.errors and not result.samples:
         result.errors.append("the file has no samples")
     if len(kinds) > 1:
@@ -491,32 +530,47 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
     if bool(prompt_columns) != bool(target_column):
         raise ValueError("prompt_column goes with response_column or answer_column: give both, or neither for rows "
                          "already in an accepted format")
-    if prompt_columns and target_column and rows:
+    if prompt_columns and target_column and rows and isinstance(rows[0], dict):
         missing = [c for c in (*prompt_columns, target_column) if c not in rows[0]]
         if missing:
             raise ValueError(f"{Path(path).name} has no column {', '.join(missing)}; it has {', '.join(rows[0])}")
-    samples: list[Any] = []
+    kept: list[tuple[int, Any, str | None]] = []   # row number, line, its error in a file with images
+    with_images = False
     errors: list[str] = []
     skipped = 0
     out = Path(out_dir)
     for number, row in enumerate(rows, 1):
-        if prompt_columns and target_column:
-            prompt = "\n\n".join(str(row[c]) for c in prompt_columns if row.get(c))
-            row = {"prompt": prompt, "completion" if response_column else "answer": row.get(target_column)}
-        if system:
-            row = dict(row, system=system)
         try:
-            line = _line(row)
+            if prompt_columns and target_column:
+                missing = [c for c in (*prompt_columns, target_column) if not isinstance(row, dict) or c not in row]
+                if missing:   # an empty value is the row's choice, a missing column is a broken row
+                    raise ValueError(f"has no column {', '.join(missing)}")
+                prompt = "\n\n".join(str(row[c]) for c in prompt_columns if row[c])
+                row = {"prompt": prompt, "completion" if response_column else "answer": row[target_column]}
+            if system and isinstance(row, dict):
+                row = dict(row, system=system)
+            line, tag_error = _line(row)
             for parts, i, source in _image_parts(line):
-                if not source.startswith("data:") and "://" not in source:   # a path: train.jsonl may be in another folder
+                read_image(source, Path(path).parent)
+                if not source.startswith("data:"):   # a path: train.jsonl may be in another folder
                     # resolved: ".." from a symlinked folder (/tmp on macOS) is not its parent in the path
                     image = os.path.relpath((Path(path).parent / source).resolve(), out.resolve())
                     parts[i] = {"type": "image", "image": image}
-            samples.append(line)
+            kept.append((number, line, tag_error))
+            if any(_image_parts(line)):
+                with_images = True
         except ValueError as error:
             skipped += 1
             if len(errors) < MAX_ERRORS:
                 errors.append(f"row {number}: {error}")
+    samples: list[Any] = []
+    for number, line, tag_error in kept:
+        if with_images and tag_error:
+            skipped += 1
+            if len(errors) < MAX_ERRORS:
+                errors.append(f"row {number}: {tag_error}")
+        else:
+            samples.append(line)
     random.Random(seed).shuffle(samples)
     n_val = min(round(len(samples) * val_fraction), VAL_MAX_SAMPLES) if val_fraction else 0
     out.mkdir(parents=True, exist_ok=True)
