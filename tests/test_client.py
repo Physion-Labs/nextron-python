@@ -64,6 +64,19 @@ def test_upload_sends_parts_then_completes(make_client, tmp_path: Path):
                                      "https://api.test/v1/datasets/ds_1/complete"]
 
 
+def test_upload_packs_no_bundle_for_a_file_without_images(make_client, monkeypatch, tmp_path: Path):
+    path = tmp_path / "train.jsonl"
+    path.write_text(json.dumps({"prompt": "1+1?", "completion": "2"}) + "\n")
+    monkeypatch.setattr("nextron_cloud.datasets.write_bundle", lambda *args: pytest.fail("a text file is sent as it is"))
+
+    def handler(request):
+        if request.url.path == "/v1/datasets":
+            return httpx.Response(201, json={"id": "ds_1", "upload_url": "https://s3.test/1", "upload_headers": {}})
+        return httpx.Response(200, json={"id": "ds_1", "name": "train.jsonl", "bytes": 1, "state": "checking", "created": 1.0})
+
+    assert make_client(handler).datasets.upload(path).state == "checking"
+
+
 def test_upload_refuses_a_bad_file_before_sending_it(make_client, tmp_path: Path):
     path = tmp_path / "bad.jsonl"
     path.write_text(json.dumps({"text": "no assistant turn"}) + "\n")
@@ -131,6 +144,24 @@ def test_training_and_checkpoint_are_waited_for_apart(make_client):
     client = make_client(lambda request: httpx.Response(200, json=answers.pop(0)))
     assert client.jobs.wait("job_1").state == "succeeded"
     assert client.jobs.wait_checkpoint("job_1").checkpoint_ready
+
+
+def test_a_run_that_saved_no_checkpoint_ends_the_wait_for_one(make_client):
+    saved_nothing = JOB | {"id": "rl_1", "state": "succeeded"}   # an RL run that trained no step
+    polls = []
+
+    def handler(request):
+        if request.url.path.endswith("/events"):
+            return httpx.Response(200, json={"events": [], "next_cursor": 0})
+        polls.append(request)
+        if len(polls) > 3:
+            pytest.fail("still waiting for a checkpoint that will not come")
+        return httpx.Response(200, json=saved_nothing)
+
+    client = make_client(handler)
+    with pytest.raises(NexTronError, match="saved no checkpoint"):
+        client.jobs.wait_checkpoint("rl_1")
+    assert list(client.jobs.events("rl_1", follow=True, until="checkpoint")) == []
 
 
 def test_a_wait_runs_for_its_whole_timeout_before_it_gives_up(make_client):
@@ -350,6 +381,21 @@ def test_a_live_run_takes_conversations_as_episodes_and_reports_a_refused_step(m
     live.close()
 
 
+def test_a_live_run_refuses_a_sample_call_that_cannot_work_before_sending_it(make_client):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/sample"):
+            pytest.fail("nothing should be sampled")
+        return httpx.Response(200, json={})
+
+    with make_client(handler).rl.connect("rl_1") as live:
+        with pytest.raises(TypeError, match=r"give a single prompt as \[prompt\]"):
+            live.sample("What is 2+2?")   # would be one prompt per character
+        with pytest.raises(TypeError, match=r"not role, content.*give it as \[messages\]"):
+            live.sample([{"role": "user", "content": "What is 2+2?"}])   # one conversation, not a list of prompts
+        with pytest.raises(ValueError, match="temperature above 0"):
+            live.sample(["What is 2+2?"], n=2, temperature=0)
+
+
 def test_an_rl_runs_metrics_are_its_training_calls(make_client):
     record = {"step": 1, "ts": 1794693600.0, "step_s": 45.0, "generation_s": 16.0, "train_s": 17.0, "client_s": 12.0,
               "session_s": 60.0, "replies": 512, "reward_mean": 0.31, "row_fill": 0.9}
@@ -398,6 +444,8 @@ def test_an_inference_run_serves_a_jobs_model_and_samples_through_its_own_path(m
     assert (run.id, run.params["job_id"]) == ("inf_1", "job_1") and ("POST", "/v1/inference") in seen
     with client.inference.connect("inf_1") as live:
         assert live.sample(["hi"])[0][0].text == "hello"
+        with pytest.raises(NexTronError, match="inf_1 is an inference run"):
+            live.train(episodes=[], learning_rate=1e-6)
     assert client.inference.openai_base_url("inf_1") == "https://api.test/v1/inference/inf_1/v1"
 
 
@@ -426,12 +474,26 @@ def test_a_live_poll_is_no_longer_than_the_time_left(make_client):
             return httpx.Response(200, json={"batch": "b1", "prompts": 1})
         if "wait" in request.url.params:
             holds.append(request.url.params["wait"])
+            assert request.extensions["timeout"]["read"] <= 5   # nor may its answer stall for the client's own 60 s
         return httpx.Response(200, json={"done": True, "finished": 1, "prompts": 1, "samples": [[
             {"id": "b1:0:0", "text": "hi", "finish_reason": "stop", "tokens": 1}]]})
 
     with make_client(handler).rl.connect("rl_1") as live:
         live.sample(["hello"], timeout=5)
     assert holds == ["5"]
+
+
+def test_a_poll_cut_at_the_deadline_is_a_timeout_like_any_other(make_client):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/sample"):
+            return httpx.Response(200, json={"batch": "b1", "prompts": 1})
+        if "/batches/" in request.url.path:
+            raise httpx.ReadTimeout("the answer stalled", request=request)
+        return httpx.Response(200, json={})
+
+    with make_client(handler).rl.connect("rl_1") as live:
+        with pytest.raises(TimeoutError, match="still not done after 0.3 s"):
+            live.sample(["hello"], timeout=0.3)
 
 
 def test_a_timeout_also_ends_the_wait_through_an_outage(make_client):
@@ -445,3 +507,66 @@ def test_a_timeout_also_ends_the_wait_through_an_outage(make_client):
         with pytest.raises(APIError):
             live.sample(["hello"], timeout=0.3)
     assert time.monotonic() - started < 5   # not the two minutes an outage is otherwise waited out
+
+
+def test_a_run_billed_by_time_has_a_bill(make_client):
+    bill = {"job_id": "rl_1", "state": "succeeded", "billing": "settled", "price_per_hour": 2800, "seconds_charged": 345,
+            "held_credits": 700, "charged_credits": 269, "settled_at": 9.0}
+    billing = make_client(lambda request: httpx.Response(200, json=bill)).jobs.billing("rl_1")
+    assert (billing.price_per_hour, billing.seconds_charged, billing.charged_credits, billing.tokens_charged) == (2800, 345, 269, None)
+
+
+@pytest.mark.parametrize("command", [["rl", "start", "--model", "qwen3.8-27b"], ["inference", "start", "--job", "job_1"]])
+@pytest.mark.parametrize("hours", ["-1", "0", "nan"])
+def test_cli_refuses_a_run_length_that_is_not_above_zero_before_asking_its_price(make_client, monkeypatch, capsys, command, hours):
+    from nextron_cloud.cli import main
+    make_client(lambda request: pytest.fail("nothing should be sent"))
+    monkeypatch.setenv("NEXTRON_API_KEY", "nk_test")
+    with pytest.raises(SystemExit) as stop:
+        main(command + ["--max-hours", hours])
+    assert stop.value.code == 2 and "--max-hours: must be a number above 0" in capsys.readouterr().err
+
+
+def test_cli_upload_exits_1_when_the_servers_check_refuses_the_dataset(make_client, monkeypatch, capsys, tmp_path: Path):
+    from nextron_cloud.cli import main
+    path = tmp_path / "train.jsonl"
+    path.write_text(json.dumps({"prompt": "1+1?", "completion": "2"}) + "\n")
+    dataset = {"id": "ds_1", "name": "train.jsonl", "bytes": 1, "created": 1.0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/datasets":
+            return httpx.Response(201, json={"id": "ds_1", "upload_url": "https://s3.test/1", "upload_headers": {}})
+        if request.method == "GET":
+            return httpx.Response(200, json=dataset | {"state": "invalid", "errors": ["1 of the images cannot be used"]})
+        return httpx.Response(200, json=dataset | {"state": "checking"})
+
+    make_client(handler)
+    monkeypatch.setenv("NEXTRON_API_KEY", "nk_test")
+    monkeypatch.setenv("NEXTRON_BASE_URL", "https://api.test")
+    with pytest.raises(SystemExit) as stop:
+        main(["datasets", "upload", str(path)])
+    printed = json.loads(capsys.readouterr().out)
+    assert stop.value.code == 1 and (printed["id"], printed["errors"]) == ("ds_1", ["1 of the images cannot be used"])
+
+
+def test_cli_prints_a_missing_file_as_an_error_not_a_traceback(capsys, tmp_path: Path):
+    from nextron_cloud.cli import main
+    with pytest.raises(SystemExit) as stop:
+        main(["datasets", "check", str(tmp_path / "missing.jsonl")])
+    assert stop.value.code == 1 and "missing.jsonl" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_guide_help_names_every_topic(capsys):
+    from nextron_cloud import cli
+    with pytest.raises(SystemExit):
+        cli.main(["guide", "--help"])
+    shown = capsys.readouterr().out
+    for topic in sorted(path.stem for path in (Path(__file__).parents[1] / "skills/nextron-cloud/references").glob("*.md")):
+        assert topic in shown
+
+
+def test_max_seq_len_takes_the_longest_context_a_model_trains():
+    from typing import get_args, get_type_hints
+
+    from nextron_cloud.types import TrainingParams
+    assert 1048576 in get_args(get_type_hints(TrainingParams)["max_seq_len"])

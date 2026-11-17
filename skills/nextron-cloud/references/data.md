@@ -128,8 +128,9 @@ After its check, `dataset` has:
 
 - `samples`, `est_tokens` (the largest token count over the models; the estimate uses it), `too_long` (samples over
   65,536 tokens for at least one model).
-- `tokens[model]`: `total` tokens, `max` (the longest sample), and `over`: how many samples are longer than 32768,
-  65536 and 262144 tokens. Compare `max` and `over` with the model's `max_seq_len` from `client.models()` to see what
+- `tokens[model]`: `total` tokens, `max` (the longest sample), and `over`: how many samples are longer than each
+  `max_seq_len` a job can pick (32768, 65536, 131072, 262144, 1048576; a dataset checked before a length was added
+  has no count for it). Compare `max` and `over` with the model's `max_seq_len` from `client.models()` to see what
   would be truncated.
 - `converted_from`: the format it was converted from, if any. `datasets.download_url(id)` gives the file exactly as
   training reads it.

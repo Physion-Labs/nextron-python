@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,16 @@ def _value(text: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return text
+
+
+def _positive(kind: type[int] | type[float]) -> Callable[[str], Any]:
+    """An argparse type: a finite number above zero."""
+    def number(text: str) -> Any:
+        value = kind(text)
+        if not 0 < value < float("inf"):
+            raise argparse.ArgumentTypeError(f"must be a number above 0, got {text}")
+        return value
+    return number
 
 
 def _params(pairs: list[str]) -> TrainingParams:
@@ -104,6 +115,15 @@ def _datasets_list(client: NexTron, args: argparse.Namespace) -> Any:
         row = [d.id, d.name, d.state, d.samples, d.validation, tokens, stats.get("max"), over]
         print("\t".join("" if v is None else str(v) for v in row))
     return None
+
+
+def _dataset_checked(client: NexTron, dataset_id: str) -> Any:
+    """The dataset once the server's check has ended; an invalid one is printed and the exit code is 1."""
+    dataset = client.datasets.wait(dataset_id)
+    if dataset.state == "invalid":
+        _print(dataset)
+        sys.exit(1)
+    return dataset
 
 
 def _serve_rewards(client: NexTron, args: argparse.Namespace) -> Any:
@@ -200,12 +220,15 @@ def _guide_dir() -> Path:
     return packaged if packaged.exists() else Path(__file__).parents[2] / "skills" / "nextron-cloud"
 
 
+def _guide_topics() -> str:
+    return ", ".join(sorted(p.stem for p in (_guide_dir() / "references").glob("*.md")))
+
+
 def _guide(args: argparse.Namespace) -> tuple[None, int]:
     root = _guide_dir()
     path = root / "SKILL.md" if not args.topic else root / "references" / f"{args.topic}.md"
     if not path.exists():
-        topics = sorted(p.stem for p in (root / "references").glob("*.md"))
-        raise SystemExit(f"no guide topic {args.topic!r}; topics: {', '.join(topics)}")
+        raise SystemExit(f"no guide topic {args.topic!r}; topics: {_guide_topics()}")
     print(path.read_text(encoding="utf-8"))
     return None, 0
 
@@ -225,7 +248,7 @@ def _parser() -> argparse.ArgumentParser:
     groups = parser.add_subparsers(dest="group", required=True)
 
     cmd = groups.add_parser("guide", help="how to run experiments: read this first (no key needed)")
-    cmd.add_argument("topic", nargs="?", help="data, training, monitoring, checkpoints, rl, serverless-rl or api")
+    cmd.add_argument("topic", nargs="?", help=_guide_topics())
     cmd.set_defaults(run=None, local=_guide)
     groups.add_parser("me", help="account, balance (US cents), price list").set_defaults(run=lambda c, a: c.me())
     groups.add_parser("models", help="models a job can train, live").set_defaults(run=lambda c, a: c.models())
@@ -260,7 +283,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd = datasets.add_parser("upload", help="check, upload and wait for the server's check")
     cmd.add_argument("path")
     cmd.add_argument("--name")
-    cmd.set_defaults(run=lambda c, a: c.datasets.wait(c.datasets.upload(a.path, name=a.name).id))
+    cmd.set_defaults(run=lambda c, a: _dataset_checked(c, c.datasets.upload(a.path, name=a.name).id))
     cmd = datasets.add_parser("splits", help="a Hugging Face dataset's configs and splits")
     cmd.add_argument("url")
     cmd.set_defaults(run=lambda c, a: c.datasets.huggingface_splits(a.url))
@@ -269,8 +292,8 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--config", default="default")
     cmd.add_argument("--split", default="train")
     cmd.add_argument("--name")
-    cmd.set_defaults(run=lambda c, a: c.datasets.wait(
-        c.datasets.import_huggingface(a.url, config=a.config, split=a.split, name=a.name).id))
+    cmd.set_defaults(run=lambda c, a: _dataset_checked(
+        c, c.datasets.import_huggingface(a.url, config=a.config, split=a.split, name=a.name).id))
     cmd = datasets.add_parser("download-url")
     cmd.add_argument("dataset_id")
     cmd.set_defaults(run=lambda c, a: {"url": c.datasets.download_url(a.dataset_id)})
@@ -334,11 +357,11 @@ def _parser() -> argparse.ArgumentParser:
     rl = groups.add_parser("rl", help="Serverless RL: your own loop samples and trains on NexTron's GPUs").add_subparsers(dest="cmd", required=True)
     cmd = rl.add_parser("start", help="price for --max-hours, then start with --yes")
     cmd.add_argument("--model", required=True)
-    cmd.add_argument("--max-hours", type=float, required=True, help="the run stops itself after this long")
-    cmd.add_argument("--max-context", type=int, help="tokens: a prompt with its reply, and a training sequence (default 16384)")
-    cmd.add_argument("--max-grad-norm", type=float, help="gradient clipping for every step (default 1.0)")
+    cmd.add_argument("--max-hours", type=_positive(float), required=True, help="the run stops itself after this long")
+    cmd.add_argument("--max-context", type=_positive(int), help="tokens: a prompt with its reply, and a training sequence (default 16384)")
+    cmd.add_argument("--max-grad-norm", type=_positive(float), help="gradient clipping for every step (default 1.0)")
     cmd.add_argument("--no-grad-clip", action="store_true", help="no gradient clipping: a step is about 2 s shorter")
-    cmd.add_argument("--idle-timeout", type=int, help="seconds without a sample or a step before it stops (default 1800)")
+    cmd.add_argument("--idle-timeout", type=_positive(int), help="seconds without a sample or a step before it stops (default 1800)")
     cmd.add_argument("--name", help="your label for the run")
     cmd.add_argument("--tag", action="append", help="a tag; repeat")
     cmd.add_argument("--yes", action="store_true", help="start the run; without it only the price is printed")
@@ -368,8 +391,8 @@ def _parser() -> argparse.ArgumentParser:
     inference = groups.add_parser("inference", help="serve a trained job's model on NexTron's GPUs and call it").add_subparsers(dest="cmd", required=True)
     cmd = inference.add_parser("start", help="price for --max-hours, then start with --yes")
     cmd.add_argument("--job", required=True, help="a training job that succeeded in the last 7 days")
-    cmd.add_argument("--max-hours", type=float, required=True, help="the run stops itself after this long")
-    cmd.add_argument("--idle-timeout", type=int, help="seconds without a request before it stops (default 1800)")
+    cmd.add_argument("--max-hours", type=_positive(float), required=True, help="the run stops itself after this long")
+    cmd.add_argument("--idle-timeout", type=_positive(int), help="seconds without a request before it stops (default 1800)")
     cmd.add_argument("--name", help="your label for the run")
     cmd.add_argument("--tag", action="append", help="a tag; repeat")
     cmd.add_argument("--yes", action="store_true", help="start the run; without it only the price is printed")
@@ -413,22 +436,22 @@ def _checked(result: Any) -> tuple[dict[str, Any], int]:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
-    if args.run is None:
-        output, code = args.local(args)
-        if output is not None:
-            _print(output)
-        sys.exit(code)
     try:
-        with NexTron() as client:
-            result = args.run(client, args)
+        if args.run is None:
+            result, code = args.local(args)
+        else:
+            with NexTron() as client:
+                result, code = args.run(client, args), 0
     except APIError as error:
         _print({"error": error.code, "status": error.status_code, "message": error.message})
         sys.exit(1)
-    except NexTronError as error:
+    except (NexTronError, OSError, ValueError) as error:   # OSError, ValueError: a local file is missing or cannot be read
         _print({"error": str(error)})
         sys.exit(1)
     if result is not None:
         _print(result)
+    if code:
+        sys.exit(code)
 
 
 if __name__ == "__main__":

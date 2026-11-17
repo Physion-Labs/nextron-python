@@ -71,10 +71,11 @@ class Jobs:
     def wait_checkpoint(self, job_id: str, *, timeout: float | None = None, poll_interval: float = 60) -> Job:
         """Wait until a succeeded job's checkpoint is uploaded and can be downloaded (minutes to an hour after training,
         by model size). NexTronError if the job ended without one."""
-        job = poll(lambda: self.get(job_id), lambda j: j.checkpoint_ready or (j.done and j.state != "succeeded"),
-                   timeout, poll_interval)
-        if not job.checkpoint_ready:
+        job = poll(lambda: self.get(job_id), _checkpoint_settled, timeout, poll_interval)
+        if job.state != "succeeded":
             raise NexTronError(f"{job_id} {job.state}; only a succeeded job has a checkpoint")
+        if not job.checkpoint_ready:
+            raise NexTronError(f"{job_id} saved no checkpoint: an RL run that trained no step has none")
         return job
 
     def progress(self, job_id: str) -> Progress:
@@ -96,7 +97,7 @@ class Jobs:
             if not follow or ended:
                 return
             job = self.get(job_id)
-            ended = job.done and (until == "training" or job.state != "succeeded" or job.checkpoint_ready)
+            ended = job.done and (until == "training" or _checkpoint_settled(job))
             if not ended:
                 time.sleep(poll_interval)
 
@@ -190,6 +191,12 @@ class Jobs:
     def trace(self, job_id: str) -> bytes:
         """The engine's per-rank step timeline, a Chrome trace for ui.perfetto.dev."""
         return self._client._request("GET", f"/v1/training/jobs/{job_id}/trace").content
+
+
+def _checkpoint_settled(job: Job) -> bool:
+    """The checkpoint is uploaded, or none will come: the job did not succeed, or it succeeded and saved none (an RL
+    run that trained no step)."""
+    return job.checkpoint_ready or (job.done and (job.state != "succeeded" or job.checkpoint is None))
 
 
 def _draft(model: str, dataset_id: str, layout: str, params: TrainingParams | None) -> dict[str, Any]:

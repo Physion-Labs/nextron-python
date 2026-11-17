@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.0rc14
+
+- `jobs.wait_checkpoint` and `jobs.events(until="checkpoint")` end for an RL run that trained no step and so saved no
+  checkpoint (`wait_checkpoint` raises `NexTronError`); they waited without end.
+- `live.sample` refuses a single prompt given without its list (a string was sampled once per character, a list of
+  chat messages was sent as prompts the run could not read), and `n` above 1 at `temperature=0`, before sending.
+- `train` on `inference.connect(...)` raises `NexTronError` saying an inference run does not train; it was a 404.
+- `datasets upload` sends a file without images as it is; it first packed a copy of it into a temporary tar.
+- `datasets prepare` refuses `--prompt-column` without `--response-column` or `--answer-column` (and the reverse), and
+  both of those together; it ignored the extra option. A row that lacks a column is left out and counted, not a `KeyError`.
+- `datasets prepare` writes image paths that are found from an `--out-dir` reached through a symlink (`/tmp` on macOS).
+- `TrainingParams.max_seq_len` takes 1048576 (`kimi-k3.1-pro-1m`); `guide --help` lists every topic.
+- Guide serverless-rl: the `tinker` SDK ends its session, and so the run, only at the end of a
+  `with tinker.ServiceClient()` block or on `close()`; a script that just returns is billed 3 more minutes.
+- `datasets check`, `datasets prepare` and `write_jsonl` take a sample whose text holds `<image>`, `<video>` or
+  `<audio>` when the file has no images, as the server does; they refused it. In a file with images the line is
+  still an error.
+- Guide dpo: Qwen3.8-Flash-Next 180B needs the model's own replies.
+- `jobs.billing` reads the bill of an RL or inference run (`price_per_hour`, `seconds_charged`); it raised a
+  validation error for a run billed by time.
+- A live call's `timeout` also ends a poll whose answer stalls (the request waited out the client's own 60 s).
+- `datasets upload` and `datasets import` exit 1 when the server's check finds the dataset invalid; it is still printed.
+- `rl start` and `inference start` refuse `--max-hours` and the other numbers at or below zero before asking a price.
+- A file that is missing or cannot be read is printed as `{"error": ...}` with exit code 1, not as a traceback.
+- Guide inference: the OpenAI example installs `openai` and imports `os`.
+
 ## 0.1.0rc13
 
 - A live call's `timeout` also ends its wait through an API outage (the two-minute outage wait ignored it).

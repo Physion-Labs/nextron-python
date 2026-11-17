@@ -304,11 +304,15 @@ class Billing(_Model):
     job_id: str
     state: JobState
     billing: str  # held (running), settled, released, not_metered
-    price_per_mtok: int | None
     held_credits: int  # US cents
     charged_credits: int  # US cents, rounded up to a whole cent
-    tokens_charged: int | None
     settled_at: float | None
+    # a training job is charged by tokens
+    price_per_mtok: int | None = None
+    tokens_charged: int | None = None
+    # an RL or inference run is charged by time, from ready to stopped
+    price_per_hour: int | None = None  # US cents, for all of the run's GPUs
+    seconds_charged: int | None = None
 
 
 class MetricPoint(_Model):
@@ -366,7 +370,7 @@ class TrainingParams(TypedDict, total=False):
     warmup_ratio: float
     weight_decay: float
     lr_scheduler_type: Literal["cosine", "linear", "constant"]
-    max_seq_len: Literal[32768, 65536, 131072, 262144]
+    max_seq_len: Literal[32768, 65536, 131072, 262144, 1048576]
     seed: int
     val_dataset_id: str
     eval_steps: int

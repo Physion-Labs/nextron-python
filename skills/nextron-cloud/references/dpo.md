@@ -23,6 +23,8 @@ One kind per dataset: preference pairs, in any of these forms.
 - Pairs work best when both replies are close to what the model itself writes, for example two of its own replies ranked
   by a judge. Replies written by other models, especially when the chosen one is much longer, can leave the loss at or
   above 0.693.
+- On `qwen3.8-next-180b` use the model's own replies: on replies written by other models its scores are too noisy for
+  DPO and the loss rises well above 0.693 after the first step.
 
 ## Settings
 

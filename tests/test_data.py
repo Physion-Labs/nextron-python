@@ -70,6 +70,25 @@ def test_prepare_file_names_a_missing_column(tmp_path: Path):
         prepare_file(csv_path, tmp_path, prompt_column="ticket", response_column="reply")
 
 
+def test_prepare_file_refuses_column_options_that_do_not_go_together(tmp_path: Path):
+    from nextron_cloud.data import prepare_file
+    csv_path = tmp_path / "t.csv"
+    csv_path.write_text("ticket,reply\nq,a\n")
+    for columns, error in [({"prompt_column": "ticket"}, "give both"), ({"response_column": "reply"}, "give both"),
+                           ({"prompt_column": "ticket", "response_column": "reply", "answer_column": "reply"}, "not both")]:
+        with pytest.raises(ValueError, match=error):
+            prepare_file(csv_path, tmp_path, **columns)
+
+
+def test_prepare_file_leaves_out_a_row_that_lacks_a_column(tmp_path: Path):
+    from nextron_cloud.data import prepare_file
+    rows = [{"question": "1+1?", "context": "sums", "reply": "2"}, {"question": "2+2?", "reply": "4"}, {"question": "3+3?"}]
+    path = tmp_path / "rows.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    report = prepare_file(path, tmp_path / "out", val_fraction=0, prompt_column=["question", "context"], response_column="reply")
+    assert (report["train"]["samples"], report["skipped"]) == (2, 1)
+
+
 def test_preference_pairs_in_three_formats(tmp_path: Path):
     q = [{"role": "user", "content": "say hi"}]
     hi, no = {"role": "assistant", "content": "hi"}, {"role": "assistant", "content": "no"}
@@ -159,3 +178,29 @@ def test_prepare_and_write_jsonl_keep_images(tmp_path: Path):
     assert report["skipped"] == 0
     result = check_file(report["train"]["path"])   # the image is found from the new folder
     assert result.ok and result.images == 1
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "a" / "b")   # like /tmp on macOS: ".." from it is not `tmp_path`
+    report = prepare_file(tmp_path / "data.jsonl", tmp_path / "link", val_fraction=0)
+    assert check_file(report["train"]["path"]).ok
+
+
+def test_a_media_tag_in_text_is_refused_only_in_a_file_with_images(tmp_path: Path):
+    (tmp_path / "cat.png").write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 640, 480))
+    tagged = {"messages": [{"role": "user", "content": "What does <image> mean in HTML?"}, {"role": "assistant", "content": "Nothing."}]}
+    picture = {"messages": [{"role": "user", "content": [{"type": "image", "image": "cat.png"}, {"type": "text", "text": "what"}]},
+                            {"role": "assistant", "content": "a cat"}]}
+    both = {"messages": [{"role": "user", "content": [{"type": "image", "image": "cat.png"}, {"type": "text", "text": "an <image> tag"}]},
+                         {"role": "assistant", "content": "a cat"}]}
+    path = tmp_path / "data.jsonl"
+
+    def check(*rows):
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return check_file(path)
+
+    assert check(tagged).ok and check(tagged).samples == 1               # as the server takes a file without images
+    assert [e[:7] for e in check(picture, tagged).errors] == ["line 2:"]   # a bundle: the server refuses the tag
+    assert [e[:7] for e in check(tagged, {"oops": 1}, picture).errors] == ["line 1:", "line 2:"]
+    assert [e[:7] for e in check(both).errors] == ["line 1:"]
+    assert write_jsonl([tagged], tmp_path / "out.jsonl") == 1
+    with pytest.raises(ValueError, match="sample 1: has <image>"):
+        write_jsonl([both], tmp_path / "out.jsonl")

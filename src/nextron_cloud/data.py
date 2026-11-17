@@ -77,6 +77,11 @@ MAX_FILE_BYTES = 5 * 1000**3
 MAX_ERRORS = 5  # the server also reports only the first five
 
 
+class _Tagged(ValueError):
+    """A media tag written in a sample's text. The server refuses it in a dataset with images only, so in a sample
+    without images it is an error only when another sample of the file has one."""
+
+
 def _image(part: dict[str, Any]) -> Any:
     """What an image part names (a path, a data: URI or a bundle's "sha256:..."); None for a part of another type."""
     if part.get("type") == "image":
@@ -101,8 +106,8 @@ def _text(content: Any, images: list[str] | None = None) -> str:
         if part.get("type") == "text":
             piece = str(part.get("text", ""))
             if images is not None and any(tag in piece for tag in PLACEHOLDERS):
-                raise ValueError("has <image>, <video> or <audio> written in its text, which a dataset with images "
-                                 "cannot hold: the trainer reads them as media")
+                raise _Tagged("has <image>, <video> or <audio> written in its text, which a dataset with images "
+                              "cannot hold: the trainer reads them as media")
             out.append(piece)
             continue
         source = _image(part)
@@ -313,7 +318,12 @@ def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
 def _line(sample: Any) -> Any:
     """The sample as a line of a JSONL file: in the server's form, or as it is when it has images (they stay content parts)."""
     images: list[str] = []
-    row = to_sample(sample, images)
+    try:
+        row = to_sample(sample, images)
+    except _Tagged:
+        if any(_image_parts(sample)):
+            raise
+        return to_sample(sample)   # no image of its own: `check_file` says whether the file it ends up in has any
     return sample if images else row
 
 
@@ -353,6 +363,7 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
         result.errors.append(f"the file is over {MAX_FILE_BYTES // 1000**3} GB")
         return result
     kinds = set()
+    tagged: list[str] = []   # lines without images whose text holds a media tag: errors if the file has images
     with path.open("rb") as f:
         for number, raw in enumerate(f, 1):
             if len(raw) > MAX_LINE_BYTES:
@@ -369,7 +380,15 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                 continue
             try:
                 found: list[str] = []
-                row = to_sample(json.loads(line), found)
+                sample = json.loads(line)
+                try:
+                    row = to_sample(sample, found)
+                except _Tagged as error:
+                    if any(_image_parts(sample)):
+                        raise
+                    row = to_sample(sample)
+                    if len(tagged) < MAX_ERRORS:
+                        tagged.append(f"line {number}: {error}")
                 for source in found:
                     read_image(source, path.parent)
             except json.JSONDecodeError as error:
@@ -383,6 +402,8 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
             replies = [row[k] for k in ("chosen", "rejected") if k in row]
             result.chars += sum(len(m["content"]) for m in row["messages"] + replies)
             kinds.add("rl" if "answer" in row else "preference" if "chosen" in row else "chat")
+    if result.images and tagged:   # the upload is a bundle
+        result.errors = sorted(result.errors + tagged, key=lambda error: int(error.split(":")[0].removeprefix("line ")))[:MAX_ERRORS]
     if not result.errors and not result.samples:
         result.errors.append("the file has no samples")
     if len(kinds) > 1:
@@ -464,7 +485,12 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
         raise ValueError("val_fraction must be at least 0 and below 1")
     rows = read_rows(path)
     prompt_columns = [prompt_column] if isinstance(prompt_column, str) else prompt_column or []
+    if response_column and answer_column:
+        raise ValueError("give response_column (chat samples) or answer_column (RL samples), not both")
     target_column = response_column or answer_column
+    if bool(prompt_columns) != bool(target_column):
+        raise ValueError("prompt_column goes with response_column or answer_column: give both, or neither for rows "
+                         "already in an accepted format")
     if prompt_columns and target_column and rows:
         missing = [c for c in (*prompt_columns, target_column) if c not in rows[0]]
         if missing:
@@ -475,15 +501,17 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
     out = Path(out_dir)
     for number, row in enumerate(rows, 1):
         if prompt_columns and target_column:
-            prompt = "\n\n".join(str(row[c]) for c in prompt_columns if row[c])
-            row = {"prompt": prompt, "completion" if response_column else "answer": row[target_column]}
+            prompt = "\n\n".join(str(row[c]) for c in prompt_columns if row.get(c))
+            row = {"prompt": prompt, "completion" if response_column else "answer": row.get(target_column)}
         if system:
             row = dict(row, system=system)
         try:
             line = _line(row)
             for parts, i, source in _image_parts(line):
                 if not source.startswith("data:") and "://" not in source:   # a path: train.jsonl may be in another folder
-                    parts[i] = {"type": "image", "image": os.path.relpath(Path(path).parent / source, out)}
+                    # resolved: ".." from a symlinked folder (/tmp on macOS) is not its parent in the path
+                    image = os.path.relpath((Path(path).parent / source).resolve(), out.resolve())
+                    parts[i] = {"type": "image", "image": image}
             samples.append(line)
         except ValueError as error:
             skipped += 1

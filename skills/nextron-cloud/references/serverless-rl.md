@@ -33,7 +33,7 @@ for a run of 8 GPUs. Numbers are US cents: `price_per_gpu_hour` 350, `gpus` 8, a
 released.
 
 `qwen3.8-next-180b` runs on two nodes (16 GPUs, so twice the price an hour). Its model takes about 20 minutes to load,
-and when the run stops it saves a 611 GB checkpoint for about 15 minutes in `closing` (not billed).
+and when the run stops it saves its checkpoint (360 GB to download) for about 15 minutes in `closing` (not billed).
 
 ## Your loop with this SDK: sample, score, train
 
@@ -112,11 +112,13 @@ recipes (`nextron-cookbook run math`), measured results and the full compatibili
 
 - An RL run costs money from the moment it is ready until it is stopped, whether or not anything trains. Show the
   owner the price first (`rl start` without `--yes`), and always stop it: when your loop ends, and when it fails.
-- It also stops itself: when your training client finishes (the `tinker` SDK says so as the process exits normally;
-  the state becomes `closing` within about 15 seconds), after `--max-hours`, and after `--idle-timeout` seconds
-  (default 1800) without a sample or a training step. A process that is killed cannot end its run: it is stopped 3
-  minutes after its last heartbeat. Stop it yourself to stop billing sooner, and in scripts stop it in a `trap` or
-  `finally`.
+- It also stops itself: when your training client ends its session (with the `tinker` SDK: the end of a
+  `with tinker.ServiceClient() as service:` block, or `service.close("success").result()`; the state becomes
+  `closing` within about 15 seconds), after `--max-hours`, and after `--idle-timeout` seconds (default 1800) without
+  a sample or a training step. A client that goes away without ending its session leaves the run ready, and billed,
+  until 3 minutes after its last heartbeat: a killed process, and also a script that made a bare
+  `tinker.ServiceClient()` and returned (the `tinker` SDK does not end the session when the process exits). Stop it
+  yourself to stop billing sooner, and in scripts stop it in a `trap` or `finally`.
 - Billing stops when the run begins to stop (state `closing`): your `rl stop`, the client finishing, or the limits
   above. The engine then saves the model if it trained and releases the GPUs about a minute later (`closed`). A new
   run of the same model may wait in `queued` until then.

@@ -60,6 +60,7 @@ class NexTron:
             raise NexTronError(f"refusing to send the API key over {url.scheme}://; use https")
         self._http = httpx.Client(base_url=base_url, headers=headers, timeout=timeout)
         self._api_key = api_key
+        self._timeout = timeout
         self.max_retries = max_retries
 
         from .datasets import Datasets

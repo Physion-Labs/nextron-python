@@ -27,9 +27,11 @@ with client.inference.connect("inf_...") as live:
     replies = [group[0].text for group in batch]
 ```
 
-Code written for OpenAI's API works with the run's base URL and your NexTron key:
+Code written for OpenAI's API works with the run's base URL and your NexTron key (`uv pip install openai`):
 
 ```python
+import os
+
 from openai import OpenAI
 
 llm = OpenAI(base_url=client.inference.openai_base_url("inf_..."), api_key=os.environ["NEXTRON_API_KEY"])

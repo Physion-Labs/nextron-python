@@ -37,13 +37,16 @@ class Datasets:
         `check`, the server's format check runs locally first, so a bad file fails before it is sent. The dataset is
         "checking" when this returns; `wait` for "ready"."""
         path = Path(path)
+        images = True   # not known without the check: packing then tells
         if check:
             result = check_file(path)
             if not result.ok:
                 raise NexTronError(f"{path.name} would not pass the format check: " + "; ".join(result.errors))
+            images = result.images > 0
         with tempfile.TemporaryDirectory() as work:
             bundle = Path(work) / "bundle.tar"
-            images = write_bundle(path, bundle) > 0
+            if images:
+                images = write_bundle(path, bundle) > 0
             file = bundle if images else path
             body = {"name": name or path.name, "bytes": file.stat().st_size} | ({"images": True} if images else {})
             created = self._client._post("/v1/datasets", body)

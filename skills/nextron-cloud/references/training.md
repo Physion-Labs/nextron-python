@@ -34,7 +34,7 @@ All optional; the server fills the rest from a tested recipe for the model.
 | `warmup_ratio` | 0.03 | 0-0.5 |
 | `weight_decay` | 0.1 | 0-1 |
 | `batch_size` | see below | samples per optimizer step, multiple of 8 and of the GPU count; only where `models()` says `batch_size` |
-| `max_seq_len` | the method's longest | 32768, 65536, 131072, 262144, up to the method's `max_seq_len` |
+| `max_seq_len` | the method's longest | 32768, 65536, 131072, 262144, 1048576, up to the method's `max_seq_len` |
 | `val_dataset_id` | | a ready dataset of at most 5,000 samples; its loss is reported as `val_loss` |
 | `eval_steps` | ~10 evaluations a run | steps between validation passes (at least 1: a 3-step run validates every step) |
 | `seed` | 42 | |

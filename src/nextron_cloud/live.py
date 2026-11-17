@@ -45,6 +45,7 @@ class LiveRun:
         if self._log_dir:
             self._log_dir.mkdir(parents=True, exist_ok=True)
         self._base = base or f"/v1/training/sessions/{run_id}/tinker/nextron/v1"   # an inference run's is under /v1/inference
+        self._trains = base is None
         self._headers = {"X-API-Key": f"tml-{client._api_key}"}
         self._stop = threading.Event()
         self._call("POST", "/heartbeat")  # fails here if the run is not ready or is a tinker client's
@@ -75,8 +76,12 @@ class LiveRun:
         if until is not None:
             deadline = min(deadline, until)
         while True:
+            timeout = self._client._timeout
+            if until is not None:   # an answer that stalls ends at the caller's deadline too
+                timeout = min(timeout, max(1, until - time.monotonic()))
             try:
-                return self._client._request(method, self._base + path, json=body, headers=self._headers, retry=False).json()
+                return self._client._request(method, self._base + path, json=body, headers=self._headers, retry=False,
+                                             timeout=timeout).json()
             except (APIError, httpx.TransportError) as error:
                 gone = isinstance(error, APIError) and error.status_code not in (500, 502, 503, 504)
                 if gone or time.monotonic() >= deadline:
@@ -89,7 +94,12 @@ class LiveRun:
             hold = POLL_WAIT
             if deadline is not None:
                 hold = max(1, min(POLL_WAIT, math.ceil(deadline - time.monotonic())))
-            answer: dict[str, Any] = self._call("GET", f"{path}?wait={hold}", until=deadline)
+            try:
+                answer: dict[str, Any] = self._call("GET", f"{path}?wait={hold}", until=deadline)
+            except httpx.TimeoutException:
+                if deadline is None or time.monotonic() < deadline:
+                    raise
+                raise TimeoutError(f"still not done after {timeout} s") from None
             if answer.get("error"):
                 raise NexTronError(answer["error"])
             if answer["done"]:
@@ -110,6 +120,10 @@ class LiveRun:
         `max_tokens` defaults to what the run's context leaves after the prompt. Returns the replies grouped by
         prompt, in order: `batch[i][j].text`."""
         started = time.monotonic()
+        if isinstance(prompts, (str, dict)):
+            raise TypeError("prompts is a list with one entry per prompt: give a single prompt as [prompt]")
+        if n > 1 and temperature == 0:
+            raise ValueError("n > 1 needs a temperature above 0: at temperature 0 the replies to a prompt are all the same")
         asked = [_prompt(p) for p in prompts]
         body = {"prompts": asked, "n": n, "max_tokens": max_tokens, "temperature": temperature,
                 "top_p": top_p, "top_k": top_k, "stop": list(stop or []), "key": uuid.uuid4().hex}
@@ -139,6 +153,8 @@ class LiveRun:
         `clip_low` / `clip_high` replace its clip window. `substeps` splits the episodes over that many optimizer
         steps. The weights change with this call: replies sampled before it cannot be trained afterwards."""
         started = time.monotonic()
+        if not self._trains:
+            raise NexTronError(f"{self.id} is an inference run: it samples, it does not train")
         if episodes is None:
             if batch is None or rewards is None:
                 raise ValueError("give batch and rewards, or episodes")
@@ -188,6 +204,9 @@ def _prompt(prompt: Prompt) -> dict[str, Any]:
     if isinstance(prompt, str):
         return {"messages": [{"role": "user", "content": prompt}]}
     if isinstance(prompt, dict):
+        if "messages" not in prompt and "tokens" not in prompt:
+            raise TypeError(f'a prompt given as a dict holds "messages" or "tokens", not {", ".join(prompt)}; '
+                            "a list of chat messages is one prompt: give it as [messages]")
         return prompt
     return {"messages": list(prompt)}
 
