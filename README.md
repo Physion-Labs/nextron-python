@@ -7,13 +7,17 @@
 
 > **Release candidate.** The API may still change before 0.1.0; install with `--prerelease=allow`.
 
-Python SDK and CLI for [NexTron Cloud](https://nextron.physionlabs.ai), which trains open models in two modes:
+Python SDK and CLI for [NexTron Cloud](https://nextron.physionlabs.ai), which trains open models in two modes and
+serves what it trained:
 
-- **Managed training**: one request (model + dataset + settings) fine-tunes a model and leaves a checkpoint to download.
-  This page starts there.
+- **Managed training**: one request (model + dataset + settings) fine-tunes a model and leaves a checkpoint to download:
+  supervised fine-tuning (full parameter or LoRA), preference training (DPO) and reinforcement fine-tuning with a
+  built-in reward (RFT). This page starts there.
 - **Serverless RL**: a loaded model your own RL loop samples from and trains, step by step:
   `client.rl.connect(id)` with `sample` and `train`, or the `tinker` SDK and tinker-cookbook unchanged; see
   [serverless-rl.md](skills/nextron-cloud/references/serverless-rl.md).
+- **Inference**: a finished job's model served on the GPUs that trained it, before you download it, called with this
+  SDK or any OpenAI client; see [inference.md](skills/nextron-cloud/references/inference.md).
 
 ```bash
 uv venv && uv pip install --prerelease=allow nextron-cloud   # or, in a uv project: uv add --prerelease=allow nextron-cloud
@@ -45,8 +49,8 @@ prepares the data and shows you the cost before it starts anything.
 
 ```text
 Run a training experiment for me on NexTron Cloud, a managed training service: one request fine-tunes a model on
-its GPUs (on example replies, or with reinforcement learning against known answers) and leaves a checkpoint to
-download.
+its GPUs (on example replies, on pairs of a preferred and a rejected reply, or with reinforcement learning against
+known answers) and leaves a checkpoint to download.
 
 Setup
 - Install the SDK with uv in this project: `uv venv && uv pip install --prerelease=allow nextron-cloud`
@@ -55,8 +59,8 @@ Setup
 - Source and docs: https://github.com/Physion-Labs/nextron-python
 - My API key is in the environment variable NEXTRON_API_KEY. Never print it or write it into a file.
 - Before anything else run `uv run nextron-cloud guide` and read all of it. At each step read its topic too:
-  `nextron-cloud guide data`, `... training`, `... rl`, `... monitoring`, `... checkpoints`, `... api`. Follow its
-  rules.
+  `nextron-cloud guide data`, `... training`, `... rl`, `... dpo`, `... monitoring`, `... checkpoints`,
+  `... inference`, `... api`. Follow its rules.
 
 The experiment
 - Model: ask me, or pick one from `nextron-cloud models` and tell me why.
@@ -77,8 +81,8 @@ How to work
 - Give every job a name and a tag for this experiment.
 - While jobs run, watch them (`nextron-cloud jobs progress` / `jobs events`) and tell me at once if one fails or
   stalls.
-- When training ends, report loss and validation loss (reinforcement learning: the reward per round), what was
-  charged, what you conclude, and what you would try next. Download checkpoints only when I ask.
+- When training ends, report loss and validation loss (reinforcement learning: the reward per round; preference
+  pairs: the loss, and the answers on held-out prompts), what was charged, what you conclude, and what you would try next. Download checkpoints only when I ask.
 - Keep everything you write in this project directory.
 ```
 
@@ -90,10 +94,12 @@ The guide is written for people and coding agents alike, in [skills/nextron-clou
 - [data.md](skills/nextron-cloud/references/data.md): the sample format, what training learns from, checks
 - [training.md](skills/nextron-cloud/references/training.md): models, params, batch, cost and time, sweeps
 - [monitoring.md](skills/nextron-cloud/references/monitoring.md): states, metrics, failures, API errors
-- [rl.md](skills/nextron-cloud/references/rl.md): managed reinforcement learning (a GRPO job) with built-in rewards
+- [rl.md](skills/nextron-cloud/references/rl.md): reinforcement fine-tuning (RFT, a GRPO job) with built-in rewards
+- [dpo.md](skills/nextron-cloud/references/dpo.md): preference training (a DPO job) on pairs of a chosen and a rejected reply
 - [checkpoints.md](skills/nextron-cloud/references/checkpoints.md): download, serve, evaluate
 - [serverless-rl.md](skills/nextron-cloud/references/serverless-rl.md): Serverless RL: your own RL loop with `sample`
   and `train`, or the `tinker` SDK and tinker-cookbook, on NexTron's GPUs
+- [inference.md](skills/nextron-cloud/references/inference.md): an inference run: try a trained model without downloading it
 - [api.md](skills/nextron-cloud/references/api.md): every SDK call and CLI command
 - [examples/compare_outputs.py](examples/compare_outputs.py): answer held-out prompts with the fine-tuned and the base
   model side by side

@@ -139,9 +139,9 @@ def _create(client: NexTron, args: argparse.Namespace) -> Any:
 def _rl_start(client: NexTron, args: argparse.Namespace) -> Any:
     if not args.yes:
         estimate = client.rl.estimate(model=args.model, max_hours=args.max_hours)
-        price = None
-        if estimate.price_per_gpu_hour is not None:
-            price = f"${estimate.price_per_gpu_hour / 100:.2f} per H100-hour ({estimate.gpus} GPUs)"
+        if estimate.price_per_gpu_hour is None:   # no price: the model has no RL runs
+            raise SystemExit(f"{args.model} has no Serverless RL; `nextron-cloud models` lists each model's methods")
+        price = f"${estimate.price_per_gpu_hour / 100:.2f} per H100-hour ({estimate.gpus} GPUs)"
         _print({"price": price, "estimate": estimate.model_dump(mode="json"), "created": False,
                 "next": "show the cost to the owner; rerun with --yes to start the RL run"})
         sys.exit(3)
@@ -172,9 +172,9 @@ def _rl_env(client: NexTron, args: argparse.Namespace) -> None:
 def _inference_start(client: NexTron, args: argparse.Namespace) -> Any:
     if not args.yes:
         estimate = client.inference.estimate(job_id=args.job, max_hours=args.max_hours)
-        price = None
-        if estimate.price_per_gpu_hour is not None:
-            price = f"${estimate.price_per_gpu_hour / 100:.2f} per H100-hour ({estimate.gpus} GPUs)"
+        if estimate.price_per_gpu_hour is None:   # no price: the job's model has no inference runs
+            raise SystemExit(f"the model of {args.job} has no inference; `nextron-cloud models` lists each model's methods")
+        price = f"${estimate.price_per_gpu_hour / 100:.2f} per H100-hour ({estimate.gpus} GPUs)"
         _print({"price": price, "estimate": estimate.model_dump(mode="json"), "created": False,
                 "next": "show the cost to the owner; rerun with --yes to start the inference run"})
         sys.exit(3)

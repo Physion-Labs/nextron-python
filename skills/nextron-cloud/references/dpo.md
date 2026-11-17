@@ -39,7 +39,7 @@ job = client.jobs.create(model="qwen3.8-27b", dataset_id=ds.id,
 | `warmup_ratio`, `weight_decay`, `lr_scheduler_type`, `seed` | as SFT | |
 
 `batch_size`, `max_seq_len` and validation sets do not apply: a step packs whole pairs into each GPU's row, and
-`client.jobs.plan` gives about how many steps a dataset makes.
+`client.jobs.estimate(...).steps` gives about how many steps a dataset makes.
 
 ## What to watch
 

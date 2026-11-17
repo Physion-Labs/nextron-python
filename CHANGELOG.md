@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0rc13
+
+- A live call's `timeout` also ends its wait through an API outage (the two-minute outage wait ignored it).
+- `rl start` and `inference start` without `--yes` say when the model has no such runs, instead of printing an
+  empty price and "rerun with --yes".
+
 ## 0.1.0rc12
 
 - `datasets prepare` and `write_jsonl` keep samples with images (they were left out with "images go in the user

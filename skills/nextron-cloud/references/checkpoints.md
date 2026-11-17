@@ -56,8 +56,10 @@ reply = llm.chat.completions.create(
 - SGLang (`python -m sglang.launch_server --model-path checkpoints/job_...`) and transformers
   (`AutoModelForCausalLM.from_pretrained`, or the base model's own class) work the same way.
 
-No GPUs to serve it on: say so to the owner; NexTron Cloud does not host inference. Validation loss
-(`val_loss` in the job's metrics) is then the comparison between runs.
+No GPUs to serve it on: an inference run serves the job's model on NexTron's GPUs for 7 days after training, if the
+model lists `inference` in `client.models()[i].methods` ([inference.md](inference.md)). For a model without it, or
+after the 7 days, say so to the owner; validation loss (`val_loss` in the job's metrics) is then the comparison
+between runs.
 
 ## Verifying a checkpoint
 

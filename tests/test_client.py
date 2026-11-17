@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -238,6 +239,16 @@ def test_serve_rewards_scores_each_batch_until_the_job_is_done(make_client):
     assert posted == [("round00000_rank0", [1.0, 0.0])]
 
 
+def test_a_model_without_rl_runs_is_refused_a_quote(make_client, monkeypatch):
+    nothing = {"price_per_gpu_hour": None, "gpus": None, "price_per_hour": None, "credits": None, "balance": 10000, "enough": True}
+    make_client(lambda request: httpx.Response(200, json=nothing))
+    monkeypatch.setenv("NEXTRON_API_KEY", "nk_test")
+    monkeypatch.setenv("NEXTRON_BASE_URL", "https://api.test")
+    from nextron_cloud.cli import main
+    with pytest.raises(SystemExit, match="has no Serverless RL"):
+        main(["rl", "start", "--model", "nemotron-3-super-120b", "--max-hours", "1"])
+
+
 def test_an_rl_run_is_priced_first_and_its_env_points_tinker_at_it_without_printing_the_key(make_client, monkeypatch, capsys):
     run = {"id": "rl_1", "state": "starting", "model": "qwen3.8-27b", "params": {"max_hours": 2}, "created": 1.0, "updated": 1.0}
     calls = []
@@ -421,3 +432,16 @@ def test_a_live_poll_is_no_longer_than_the_time_left(make_client):
     with make_client(handler).rl.connect("rl_1") as live:
         live.sample(["hello"], timeout=5)
     assert holds == ["5"]
+
+
+def test_a_timeout_also_ends_the_wait_through_an_outage(make_client):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/sample"):
+            return httpx.Response(200, json={"batch": "b1", "prompts": 1})
+        return httpx.Response(503 if "/batches/" in request.url.path else 200, json={})
+
+    with make_client(handler).rl.connect("rl_1") as live:
+        started = time.monotonic()
+        with pytest.raises(APIError):
+            live.sample(["hello"], timeout=0.3)
+    assert time.monotonic() - started < 5   # not the two minutes an outage is otherwise waited out

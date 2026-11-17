@@ -68,18 +68,20 @@ class LiveRun:
             except (NexTronError, httpx.HTTPError):
                 pass  # a missed beat is fine; three minutes of them stop the run
 
-    def _call(self, method: str, path: str, body: Any = None) -> Any:
+    def _call(self, method: str, path: str, body: Any = None, until: float | None = None) -> Any:
         """One call to the run, repeated through a short outage: a restart of the API answers 500 or 502-504. Repeating
-        is safe: a sample or train call carries its key."""
+        is safe: a sample or train call carries its key. `until`: the caller's own deadline, if it comes first."""
         deadline = time.monotonic() + OUTAGE_SECONDS
+        if until is not None:
+            deadline = min(deadline, until)
         while True:
             try:
                 return self._client._request(method, self._base + path, json=body, headers=self._headers, retry=False).json()
             except (APIError, httpx.TransportError) as error:
                 gone = isinstance(error, APIError) and error.status_code not in (500, 502, 503, 504)
-                if gone or time.monotonic() > deadline:
+                if gone or time.monotonic() >= deadline:
                     raise
-                time.sleep(2)
+                time.sleep(min(2, deadline - time.monotonic()))
 
     def _wait(self, path: str, timeout: float | None) -> dict[str, Any]:
         deadline = None if timeout is None else time.monotonic() + timeout
@@ -87,7 +89,7 @@ class LiveRun:
             hold = POLL_WAIT
             if deadline is not None:
                 hold = max(1, min(POLL_WAIT, math.ceil(deadline - time.monotonic())))
-            answer: dict[str, Any] = self._call("GET", f"{path}?wait={hold}")
+            answer: dict[str, Any] = self._call("GET", f"{path}?wait={hold}", until=deadline)
             if answer.get("error"):
                 raise NexTronError(answer["error"])
             if answer["done"]:
