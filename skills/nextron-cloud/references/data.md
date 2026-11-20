@@ -145,8 +145,10 @@ datasets (`sample=True` in `datasets.list()`) can be trained on by every account
 ## Images and videos
 
 Qwen3.8-27B, Gemma-4-26B-A4B, Qwen3.8-Next-180B and Muse-Glimmer-30B train on images, and the first three on videos
-too (SFT, full-parameter or LoRA, and their long-context ids such as `qwen3.8-27b-256k`). Images and videos are opened organisation by organisation: if `datasets upload`
-answers 403, yours is not enabled yet.
+too (SFT, full-parameter or LoRA, and their long-context ids such as `qwen3.8-27b-256k`). Images and videos are opened
+organisation by organisation, each on its own: if `datasets upload` answers 403, images are not open to yours yet; a
+dataset whose videos are not open to yours ends `invalid` with "videos are not open to this organisation yet".
+`nextron-cloud models` lists `image` / `video` in a model's `input` only where they are open to you.
 
 ```json
 {"messages": [{"role": "user", "content": [{"type": "image", "image": "photos/cat.jpg"}, {"type": "text", "text": "What is this?"}]},

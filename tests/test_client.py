@@ -290,7 +290,8 @@ def test_an_rl_run_is_priced_first_and_its_env_points_tinker_at_it_without_print
             return httpx.Response(200, json={"price_per_gpu_hour": 300, "gpus": 8, "price_per_hour": 2400, "credits": 4800,
                                              "balance": 10000, "enough": True})
         if request.method == "POST":
-            assert body(request) == {"model": "qwen3.8-27b", "max_hours": 2.0, "max_context": 8192, "grad_clip": False}
+            assert body(request) == {"model": "qwen3.8-27b", "max_hours": 2.0, "max_context": 8192, "grad_clip": False,
+                                     "images": True}
             return httpx.Response(201, json=run)
         return httpx.Response(200, json=run | {"state": "ready", "ready": 5.0})
 
@@ -305,7 +306,7 @@ def test_an_rl_run_is_priced_first_and_its_env_points_tinker_at_it_without_print
     assert stop.value.code == 3 and ("POST", "/v1/training/sessions") not in calls   # only the price without --yes
     printed = json.loads(capsys.readouterr().out)
     assert printed["price"] == "$3.00 per H100-hour (8 GPUs)" and printed["estimate"]["credits"] == 4800
-    main(create + ["--yes", "--no-grad-clip"])
+    main(create + ["--yes", "--no-grad-clip", "--images"])
     assert ("POST", "/v1/training/sessions") in calls
     client = NexTron()
     assert client.rl.wait("rl_1").state == "ready"

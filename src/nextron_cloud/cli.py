@@ -167,7 +167,7 @@ def _rl_start(client: NexTron, args: argparse.Namespace) -> Any:
         sys.exit(3)
     return client.rl.start(model=args.model, max_hours=args.max_hours, max_context=args.max_context,
                            max_grad_norm=args.max_grad_norm, grad_clip=False if args.no_grad_clip else None,
-                           idle_timeout=args.idle_timeout, name=args.name, tags=args.tag)
+                           idle_timeout=args.idle_timeout, images=args.images, name=args.name, tags=args.tag)
 
 
 def _rl_wait(client: NexTron, args: argparse.Namespace) -> Any:
@@ -362,6 +362,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--max-grad-norm", type=_positive(float), help="gradient clipping for every step (default 1.0)")
     cmd.add_argument("--no-grad-clip", action="store_true", help="no gradient clipping: a step is about 2 s shorter")
     cmd.add_argument("--idle-timeout", type=_positive(int), help="seconds without a sample or a step before it stops (default 1800)")
+    cmd.add_argument("--images", action="store_true", help="prompts may hold images and videos (models whose input lists them)")
     cmd.add_argument("--name", help="your label for the run")
     cmd.add_argument("--tag", action="append", help="a tag; repeat")
     cmd.add_argument("--yes", action="store_true", help="start the run; without it only the price is printed")

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0rc19
+
+- `nextron-cloud rl start --images`: a run whose prompts hold images and videos, from the command line.
+- Guide: videos are opened per organisation apart from images; a dataset with videos an organisation cannot use ends
+  `invalid` with "videos are not open to this organisation yet".
+
 ## 0.1.0rc18
 
 - Serverless RL runs with images: `rl.start(..., images=True)`; a prompt's user message may hold image and video

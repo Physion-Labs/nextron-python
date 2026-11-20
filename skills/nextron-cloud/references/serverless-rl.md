@@ -153,7 +153,8 @@ ids and paths (`nx-...`, `tinker://nx-.../weights/final`); they are not argument
 ### Prompts with images and videos
 
 Qwen3.8-27B, Gemma-4-26B-A4B, Qwen3.8-Next-180B and Muse-Glimmer-30B take images in a run's prompts (the models whose
-`input` lists `image`; images are opened organisation by organisation, as for datasets). Start the run with `images=True`, and write an image as a
+`input` lists `image`; images and videos are opened organisation by organisation, as for datasets). Start the run with
+`images=True` (`nextron-cloud rl start ... --images`), and write an image as a
 content part of a user message, as in a dataset:
 
 ```python
