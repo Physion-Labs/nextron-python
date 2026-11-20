@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc17
+
+- Guide: LoRA is on every model but `kimi-k3.1-pro`, and the larger models train it on fewer GPUs than a full
+  fine-tune.
+
 ## 0.1.0rc16
 
 - The product is called NexCloud: the guides, the CLI's help and the docstrings say so. The package, the

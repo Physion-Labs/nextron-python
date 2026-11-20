@@ -19,6 +19,8 @@ Longer-context versions are separate ids (for example `...-256k`) with their own
 - **full**: every weight trained; FP32 master weights, gradients and AdamW states, BF16 compute.
 - **lora**: rank 32, alpha 64, on every linear layer of the language model (routed MoE experts excluded); base
   weights frozen. The adapters are **merged** into the checkpoint, so it is a full model like a full fine-tune.
+  Every model but `kimi-k3.1-pro` has it (a model's `methods` say so), and the larger models train LoRA on fewer
+  GPUs than a full fine-tune: with `layout="auto"` the job takes the smallest setup that trains it.
 
 ## Params
 
