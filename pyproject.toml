@@ -28,7 +28,7 @@ Homepage = "https://nextron.physionlabs.ai"
 Issues = "https://github.com/Physion-Labs/nextron-python/issues"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "mypy>=1.13"]
+dev = ["pytest>=8.0", "mypy>=1.13", "av>=17.1"]   # av writes the MP4 files of the video tests
 
 [build-system]
 requires = ["hatchling"]

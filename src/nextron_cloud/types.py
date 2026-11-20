@@ -84,7 +84,7 @@ class Dataset(_Model):
     validation: bool = False
     source: str | None = None
     tokens: dict[str, Any] | None = None  # per model: total, longest sample (RL: longest prompt), samples over each length
-    kind: Literal["chat", "rl", "preference"] = "chat"  # rl: prompts with answers (grpo); preference: pairs (dpo)
+    kind: Literal["chat", "rl", "preference", "images"] = "chat"  # rl: prompts with answers (grpo); preference: pairs (dpo); images: media for an RL run
     images: int | None = None  # image files of a dataset uploaded with images; None for a text dataset
 
     @property
@@ -157,6 +157,7 @@ class RLRun(_Model):
     error: str | None = None
     name: str | None = None
     tags: list[str] = []
+    images: list[dict[str, Any]] = []  # the image datasets given to it: {"dataset_id", "state": "fetching" | "ready"}
 
     @computed_field  # type: ignore[prop-decorator]
     @property

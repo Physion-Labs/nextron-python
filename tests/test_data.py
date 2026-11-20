@@ -6,6 +6,7 @@ import pytest
 
 from nextron_cloud import check_file, to_messages, write_jsonl
 from nextron_cloud.data import prepare_file, to_sample
+from tests.conftest import mp4
 
 USER, ASSISTANT = {"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}
 
@@ -29,7 +30,7 @@ def test_known_formats_become_messages(sample):
 
 @pytest.mark.parametrize("sample, error", [
     ({"messages": [USER]}, "assistant"),
-    ({"messages": [USER, ASSISTANT], "images": ["a.png"]}, "images go in the user messages"),
+    ({"messages": [USER, ASSISTANT], "images": ["a.png"]}, "images and videos go in the user messages"),
     ({"messages": [USER, {"role": "system", "content": "s"}, ASSISTANT]}, "first"),
 ])
 def test_unusable_samples_say_why(sample, error):
@@ -169,6 +170,49 @@ def test_samples_with_images_are_checked_and_packed(tmp_path: Path):
         assert error in check_file(path).errors[0]
 
 
+def test_samples_with_videos_are_checked_and_packed(tmp_path: Path):
+    import hashlib
+    import tarfile
+
+    from nextron_cloud.data import write_bundle
+
+    video = mp4(64, 48, 2)
+    (tmp_path / "race.mp4").write_bytes(video)
+    (tmp_path / "short.mp4").write_bytes(mp4(64, 48, 0.5))
+    sha = hashlib.sha256(video).hexdigest()
+    path = tmp_path / "data.jsonl"
+
+    def write(*videos):
+        content = [{"type": "video", "video": v} for v in videos] + [{"type": "text", "text": "who wins?"}]
+        path.write_text(json.dumps({"messages": [{"role": "user", "content": content}, ASSISTANT]}) + "\n")
+
+    write("race.mp4")
+    result = check_file(path)
+    assert result.ok and (result.images, result.videos) == (0, 1)
+    assert write_bundle(path, tmp_path / "bundle.tar") == 1
+    with tarfile.open(tmp_path / "bundle.tar") as tar:
+        assert tar.getnames() == [f"videos/{sha}.mp4", "data.jsonl"]
+        packed = json.loads(tar.extractfile("data.jsonl").read())
+    assert packed["messages"][0]["content"][0] == {"type": "video", "video": f"sha256:{sha}"}
+    report = prepare_file(path, tmp_path / "out", val_fraction=0)   # the video's path rewritten for the new folder
+    assert check_file(report["train"]["path"]).videos == 1
+
+    for videos, error in [(["data.jsonl"], "is not an MP4 file"), (["short.mp4"], "is shorter than a second"),
+                          (["https://example.com/race.mp4"], "download it"), (["data:video/mp4;base64,AAAA"], "data: URI"),
+                          (["race.mp4"] * 5, "has 5 videos")]:
+        write(*videos)
+        assert error in check_file(path).errors[0]
+
+
+def test_rl_prompts_with_images_are_checked(tmp_path: Path):
+    (tmp_path / "cat.png").write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 640, 480))
+    row = {"messages": [{"role": "user", "content": [{"type": "image", "image": "cat.png"}, {"type": "text", "text": "what"}]}],
+           "answer": "cat"}
+    (tmp_path / "rl.jsonl").write_text(json.dumps(row) + "\n")
+    result = check_file(tmp_path / "rl.jsonl")
+    assert result.ok and result.kind == "rl" and result.images == 1
+
+
 def test_prepare_and_write_jsonl_keep_images(tmp_path: Path):
     from nextron_cloud.data import write_jsonl
 
@@ -236,7 +280,7 @@ def test_a_file_with_images_is_held_to_the_bundle_limits(tmp_path: Path, monkeyp
     (tmp_path / "big.png").write_bytes(png)
     path.write_text(json.dumps({"messages": [{"role": "user", "content": [{"type": "image", "image": "big.png"}]}, ASSISTANT]}) + "\n")
     monkeypatch.setattr(data, "BUNDLE_MAX_BYTES", 600)
-    assert "the samples and their images are over" in check_file(path).errors[0]
+    assert "the samples and their images and videos are over" in check_file(path).errors[0]
     monkeypatch.setattr(data, "BUNDLE_MAX_IMAGES", 0)
     assert "different images" in check_file(path).errors[0]
     path.write_text(json.dumps({"messages": [{"role": "user", "content": "x" * 600}, ASSISTANT]}) + "\n")

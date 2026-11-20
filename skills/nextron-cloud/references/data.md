@@ -26,10 +26,10 @@ A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line
 
 - Roles are `system`, `user`, `assistant`. At most one system message, and only first.
 - At least one non-empty assistant message.
-- `content` is a string, or OpenAI content parts: `{"type": "text", "text": ...}`, and in user messages image parts
-  (see [Images](#images)).
-- Audio and video are refused, and so is an `image(s)` / `video(s)` / `audio(s)` field beside the messages. Images go
-  inside user messages: see [Images](#images).
+- `content` is a string, or OpenAI content parts: `{"type": "text", "text": ...}`, and in user messages image and
+  video parts (see [Images and videos](#images-and-videos)).
+- Audio is refused, and so is an `image(s)` / `video(s)` / `audio(s)` field beside the messages. Images and videos go
+  inside user messages: see [Images and videos](#images-and-videos).
 
 These are converted to `messages` (by `to_messages` / `write_jsonl` locally, and by the server on upload):
 
@@ -142,30 +142,40 @@ fine.
 Limits: 50 datasets an account (delete old ones with `datasets.delete`), validation sets at most 5,000 samples. Sample
 datasets (`sample=True` in `datasets.list()`) can be trained on by every account and cannot be deleted.
 
-## Images
+## Images and videos
 
-Qwen3.8-27B and Gemma-4-26B-A4B train on images (SFT, full-parameter or LoRA). Images are opened organisation by
-organisation: if `datasets upload` answers 403, yours is not enabled yet.
+Qwen3.8-27B, Gemma-4-26B-A4B, Qwen3.8-Next-180B and Muse-Glimmer-30B train on images, and the first three on videos
+too (SFT, full-parameter or LoRA, and their long-context ids such as `qwen3.8-27b-256k`). Images and videos are opened organisation by organisation: if `datasets upload`
+answers 403, yours is not enabled yet.
 
 ```json
 {"messages": [{"role": "user", "content": [{"type": "image", "image": "photos/cat.jpg"}, {"type": "text", "text": "What is this?"}]},
               {"role": "assistant", "content": "A cat."}]}
+{"messages": [{"role": "user", "content": [{"type": "video", "video": "clips/race.mp4"}, {"type": "text", "text": "Who wins?"}]},
+              {"role": "assistant", "content": "The red car."}]}
 ```
 
 - An image is a file path relative to the JSONL file, or a base64 `data:` URI. OpenAI's
-  `{"type": "image_url", "image_url": {"url": ...}}` is read the same way. A URL is not fetched: download the file first.
-- JPEG and PNG only, up to 20 MB and 36 million pixels each, no side over 200 times the other, at most 16 a sample,
-  in user messages only.
+  `{"type": "image_url", "image_url": {"url": ...}}` is read the same way. A video is a file path. A URL is not
+  fetched: download the file first.
+- Images: JPEG and PNG only, up to 20 MB and 36 million pixels each, no side over 200 times the other, at most 16 a
+  sample. Videos: MP4 only, up to 500 MB, 1 second to 10 minutes and 3840 x 2160 a frame each, at most 4 a sample.
+  In user messages only.
 - Do not write `<image>`, `<video>` or `<audio>` in the text of such a dataset.
-- `datasets check` reads every image file's header, as the server does on upload: type, size, pixel count. The
-  server then decodes each image; one whose data is broken behind a good header makes the dataset `invalid` there.
-- `datasets prepare` and `write_jsonl` keep a sample with images as it is (`prepare` rewrites image paths for its
-  output folder).
-- `datasets upload` packs the samples and the image files into one upload
+- `datasets check` reads every image file's header and every video's MP4 boxes, as the server does on upload: type,
+  size, pixel count, length. The server then decodes each file; one whose data is broken behind a good header makes
+  the dataset `invalid` there.
+- `datasets prepare` and `write_jsonl` keep a sample with images or videos as it is (`prepare` rewrites their paths
+  for its output folder).
+- `datasets upload` packs the samples and the image and video files into one upload
   (each file once, up to 20 GB together). Nothing else changes: `wait`, then train.
 - An image counts as tokens, and is billed as them: up to 514 on Qwen3.8-27B (a 32-pixel square each, so a small image
-  costs less), about 260-282 on Gemma-4-26B-A4B whatever its size. `tokens` on the dataset includes them per model.
-- A sample with images is never cut: a job is refused if the dataset's longest sample is over `max_seq_len`.
+  costs less), about 260-282 on Gemma-4-26B-A4B whatever its size. A video counts as the tokens of the frames
+  training reads (see below). `tokens` on the dataset includes them per model.
+- A sample with images or videos is never cut: a job is refused if the dataset's longest sample is over `max_seq_len`.
 - Training reads a copy of each image: 8-bit RGB, transparency on white, turned as its EXIF says, and scaled down
-  only above 1.6 million pixels.
-- Not with images yet: validation sets, DPO, RFT, Serverless RL, samples over one GPU's row (64K tokens on Qwen).
+  only above 1.6 million pixels. Each video is re-encoded as H.264 at up to 4 frames a second and up to 1280 x 720,
+  with at least 32 frames; its audio is dropped.
+- Not with images or videos yet: validation sets and DPO. A sample with images or videos must fit one GPU's row (64K
+  tokens on Qwen), also on a long-context id; text samples beside it may be longer.
+  Serverless RL takes them in its prompts: see serverless-rl.md.

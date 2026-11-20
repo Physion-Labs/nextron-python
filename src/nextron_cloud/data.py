@@ -17,13 +17,15 @@ At least one assistant message is needed, and a system message may only come fir
 
 An optional top-level "system" or "system_prompt" string becomes the system message.
 
-A user message of a "messages" sample may carry images (JPEG or PNG, up to 16 a sample, 20 MB each), as content parts:
+A user message of a "messages" sample may carry images (JPEG or PNG, up to 16 a sample, 20 MB each) and videos (MP4,
+up to 4 a sample, 500 MB each), as content parts:
 
     {"role": "user", "content": [{"type": "image", "image": "photos/cat.jpg"}, {"type": "text", "text": "What is this?"}]}
+    {"role": "user", "content": [{"type": "video", "video": "clips/race.mp4"}, {"type": "text", "text": "Who wins?"}]}
 
 An image is a file path (relative to the JSONL file) or a base64 "data:" URI; OpenAI's {"type": "image_url",
-"image_url": {"url": ...}} is read the same way. A URL is not fetched: download the file first. Uploading packs the
-image files with the samples (`write_bundle`).
+"image_url": {"url": ...}} is read the same way. A video is a file path. A URL is not fetched: download the file first.
+Uploading packs the image and video files with the samples (`write_bundle`).
 
 Reinforcement learning (train_type "grpo") takes prompts with the answer the reward checks the model's reply against,
 one kind per file:
@@ -63,8 +65,8 @@ SHAREGPT_ROLES = {"human": "user", "user": "user", "gpt": "assistant", "assistan
 PAIRS = (("prompt", "completion"), ("prompt", "response"), ("query", "response"), ("question", "answer"), ("question", "response"),
          ("problem", "solution"), ("input", "output"))
 MEDIA_FIELDS = ("image", "images", "video", "videos", "audio", "audios")
-MEDIA_ERROR = ("has an image, audio or video part; images go in the user messages of a \"messages\" sample "
-               "(JPEG and PNG), audio and video are not trained on")
+MEDIA_ERROR = ("has an image, video or audio part; images and videos go in the user messages of a \"messages\" "
+               "sample (JPEG, PNG and MP4), audio is not trained on")
 PLACEHOLDERS = ("<image>", "<video>", "<audio>")   # the trainer reads these in a sample's text as media
 IMAGE_TYPES = {b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
 MAX_IMAGE_BYTES = 20 * 1000**2
@@ -72,32 +74,40 @@ MAX_IMAGE_PIXELS = 36_000_000
 MAX_IMAGE_RATIO = 200   # long side / short side
 JPEG_SIZE_MARKERS = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
 MAX_IMAGES = 16   # per sample
+MAX_VIDEO_BYTES = 500 * 1000**2
+MAX_VIDEO_SECONDS = 600
+MIN_VIDEO_SECONDS = 1.0
+MAX_VIDEO_PIXELS = 3840 * 2160   # a frame, as uploaded
+MP4_BRANDS = {b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"avc1", b"M4V ", b"qt  ", b"dash"}
+MAX_VIDEOS = 4   # per sample
 MAX_LINE_BYTES = 32 << 20
 MAX_FILE_BYTES = 5 * 1000**3
-BUNDLE_MAX_BYTES = 20 * 1000**3   # a file with images is uploaded as one tar of the samples and the images
-BUNDLE_MAX_IMAGES = 200_000
-IMAGE_REF_CHARS = len("sha256:") + 64   # how a bundle names an image
+BUNDLE_MAX_BYTES = 20 * 1000**3   # a file with images or videos is uploaded as one tar of the samples and the files
+BUNDLE_MAX_IMAGES = 200_000   # image and video files
+IMAGE_REF_CHARS = len("sha256:") + 64   # how a bundle names an image or a video
 MAX_ERRORS = 5  # the server also reports only the first five
 
 
 class _Tagged(ValueError):
-    """A media tag written in a sample's text. The server refuses it in a dataset with images only, so in a sample
-    without images it is an error only when another sample of the file has one."""
+    """A media tag written in a sample's text. The server refuses it in a dataset with images or videos only, so in a
+    sample without them it is an error only when another sample of the file has one."""
 
 
-def _image(part: dict[str, Any]) -> Any:
-    """What an image part names (a path, a data: URI or a bundle's "sha256:..."); None for a part of another type."""
-    if part.get("type") == "image":
-        return part.get("image")
+def _media(part: dict[str, Any]) -> tuple[str, Any] | None:
+    """("image" | "video", what the part names: a path, a data: URI or a bundle's "sha256:..."); None for a part of
+    another type."""
+    if part.get("type") in ("image", "video"):
+        return part["type"], part.get(part["type"])
     if part.get("type") == "image_url":
         url = part.get("image_url")
-        return url.get("url") if isinstance(url, dict) else url
+        return "image", url.get("url") if isinstance(url, dict) else url
     return None
 
 
 def _text(content: Any, images: list[str] | None = None, tags: bool = False) -> str:
-    """A message's content as text. With `images`, an image part is "<image>" in the text and what it names is
-    appended to the list; without, every part must be text. With `tags`, a media tag written in the text is refused."""
+    """A message's content as text. With `images`, an image or video part is "<image>" or "<video>" in the text and
+    what it names is appended to the list; without, every part must be text. With `tags`, a media tag written in the
+    text is refused."""
     if isinstance(content, str):
         parts: list[dict[str, Any]] = [{"type": "text", "text": content}]
     elif isinstance(content, list) and all(isinstance(p, dict) for p in content):
@@ -109,15 +119,15 @@ def _text(content: Any, images: list[str] | None = None, tags: bool = False) -> 
         if part.get("type") == "text":
             piece = str(part.get("text", ""))
             if tags and any(tag in piece for tag in PLACEHOLDERS):
-                raise _Tagged("has <image>, <video> or <audio> written in its text, which a dataset with images "
-                              "cannot hold: the trainer reads them as media")
+                raise _Tagged("has <image>, <video> or <audio> written in its text, which a dataset with images or "
+                              "videos cannot hold: the trainer reads them as media")
             out.append(piece)
             continue
-        source = _image(part)
-        if images is None or not isinstance(source, str):
+        media = _media(part)
+        if images is None or media is None or not isinstance(media[1], str):
             raise ValueError(MEDIA_ERROR)
-        images.append(source)
-        out.append("<image>")
+        images.append(media[1])
+        out.append(f"<{media[0]}>")
     return "".join(out)
 
 
@@ -128,13 +138,8 @@ def read_image(source: str, base: Path) -> tuple[str, bytes]:
             data = base64.b64decode(source.split(",", 1)[1], validate=True)
         except (IndexError, ValueError):
             raise ValueError("has an image whose data: URI is not base64") from None
-    elif "://" in source:
-        raise ValueError(f"names an image by URL ({source[:60]}); download it and give the file's path")
     else:
-        try:
-            data = (base / source).read_bytes()
-        except OSError:
-            raise ValueError(f"names an image file that cannot be read: {source[:120]}") from None
+        data = _read_file(source, base)
     kind = next((ext for magic, ext in IMAGE_TYPES.items() if data.startswith(magic)), None)
     if kind is None:
         raise ValueError(f"has an image that is neither JPEG nor PNG ({source[:60]}); convert it")
@@ -151,6 +156,101 @@ def read_image(source: str, base: Path) -> tuple[str, bytes]:
     if max(width, height) > MAX_IMAGE_RATIO * min(width, height):
         raise ValueError(f"has an image more than {MAX_IMAGE_RATIO} times longer than wide ({width} x {height}, {source[:60]})")
     return kind, data
+
+
+def read_video(source: str, base: Path) -> tuple[str, bytes]:
+    """("mp4", the file's bytes) of a video a sample names by a path relative to `base`, checked from its boxes."""
+    if source.startswith("data:"):
+        raise ValueError("has a video given as a data: URI; save it as an MP4 file and give the file's path")
+    data = _read_file(source, base)
+    try:
+        mp4_header(data)
+    except (struct.error, StopIteration, ZeroDivisionError):   # a box cut short, missing, or a zero time scale
+        raise ValueError(f"has a video that is not a complete MP4 file ({source[:60]})") from None
+    except ValueError as error:
+        raise ValueError(f"has a video that {error} ({source[:60]})") from None
+    return "mp4", data
+
+
+def read_media(kind: str, source: str, base: Path) -> tuple[str, bytes]:
+    """(file extension, bytes) of an image or a video (`kind` "image" or "video") a sample names."""
+    return read_video(source, base) if kind == "video" else read_image(source, base)
+
+
+def _read_file(source: str, base: Path) -> bytes:
+    if "://" in source:
+        raise ValueError(f"names a file by URL ({source[:60]}); download it and give the file's path")
+    try:
+        return (base / source).read_bytes()
+    except OSError:
+        raise ValueError(f"names a file that cannot be read: {source[:120]}") from None
+
+
+def _boxes(data: bytes, start: int, end: int) -> Iterator[tuple[bytes, int, int]]:
+    """(type, payload start, payload end) of each MP4 box in data[start:end]."""
+    at = start
+    while at + 8 <= end:
+        size, kind = struct.unpack(">I4s", data[at:at + 8])
+        head = 8
+        if size == 1:
+            size, head = struct.unpack(">Q", data[at + 8:at + 16])[0], 16
+        elif size == 0:
+            size = end - at
+        if size < head or at + size > end:
+            raise ValueError("is not a complete MP4 file")
+        yield kind, at + head, at + size
+        at += size
+
+
+def _find(data: bytes, start: int, end: int, path: list[bytes]) -> Iterator[tuple[int, int]]:
+    """(payload start, payload end) of the boxes at the end of `path` (box types) under data[start:end]."""
+    for kind, payload, stop in _boxes(data, start, end):
+        if kind == path[0] and len(path) == 1:
+            yield payload, stop
+        elif kind == path[0]:
+            yield from _find(data, payload, stop, path[1:])
+
+
+def mp4_header(data: bytes) -> tuple[int, int, float, float]:
+    """(width, height, seconds, frames a second) of an MP4 file's first video track, read from its boxes. ValueError
+    says why the server would refuse the file."""
+    if len(data) > MAX_VIDEO_BYTES:
+        raise ValueError(f"is over {MAX_VIDEO_BYTES // 1000**2} MB")
+    if data[4:8] != b"ftyp" or data[8:12] not in MP4_BRANDS:
+        raise ValueError("is not an MP4 file")
+    moov = next(_find(data, 0, len(data), [b"moov"]), None)
+    if moov is None:
+        raise ValueError("is not a complete MP4 file")
+    for trak in _find(data, *moov, [b"trak"]):
+        handler = next(_find(data, *trak, [b"mdia", b"hdlr"]), None)
+        if handler is None or data[handler[0] + 8:handler[0] + 12] != b"vide":
+            continue
+        tkhd, end = next(_find(data, *trak, [b"tkhd"]))
+        width, height = (value >> 16 for value in struct.unpack(">II", data[end - 8:end]))
+        matrix = tkhd + (52 if data[tkhd] == 1 else 40)
+        a, b = struct.unpack(">ii", data[matrix:matrix + 8])
+        if a == 0 and b != 0:   # turned a quarter
+            width, height = height, width
+        mdhd, _ = next(_find(data, *trak, [b"mdia", b"mdhd"]))
+        if data[mdhd] == 1:
+            timescale, duration = struct.unpack(">IQ", data[mdhd + 20:mdhd + 32])
+        else:
+            timescale, duration = struct.unpack(">II", data[mdhd + 12:mdhd + 20])
+        stsz, _ = next(_find(data, *trak, [b"mdia", b"minf", b"stbl", b"stsz"]))
+        frames = struct.unpack(">I", data[stsz + 8:stsz + 12])[0]
+        seconds = duration / timescale
+        if not frames:
+            raise ValueError("has no frames")
+        if seconds < MIN_VIDEO_SECONDS:
+            raise ValueError("is shorter than a second")
+        if seconds > MAX_VIDEO_SECONDS:
+            raise ValueError(f"is longer than {MAX_VIDEO_SECONDS} seconds")
+        if width * height > MAX_VIDEO_PIXELS:
+            raise ValueError("is larger than 3840 x 2160 a frame")
+        if max(width, height) > MAX_IMAGE_RATIO * min(width, height):
+            raise ValueError(f"is more than {MAX_IMAGE_RATIO} times longer than wide ({width} x {height})")
+        return width, height, seconds, frames / seconds
+    raise ValueError("has no video track")
 
 
 def _png_size(data: bytes) -> tuple[int, int] | None:
@@ -183,22 +283,24 @@ def _jpeg_size(data: bytes) -> tuple[int, int] | None:
     return size
 
 
-def _image_parts(sample: Any) -> Iterator[tuple[list[Any], int, str]]:
-    """(the content parts, the index, what the image names) of each image part in a sample's messages."""
+def _media_parts(sample: Any) -> Iterator[tuple[list[Any], int, str, str]]:
+    """(the content parts, the index, "image" | "video", what it names) of each image and video part in a sample's
+    messages."""
     messages = sample.get("messages") if isinstance(sample, dict) else None
     for message in messages if isinstance(messages, list) else []:
         parts = message.get("content") if isinstance(message, dict) else None
         if not isinstance(parts, list):
             continue
         for i, part in enumerate(parts):
-            source = _image(part) if isinstance(part, dict) else None
-            if isinstance(source, str):
-                yield parts, i, source
+            media = _media(part) if isinstance(part, dict) else None
+            if media is not None and isinstance(media[1], str):
+                yield parts, i, media[0], media[1]
 
 
 def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
     """The sample as chat messages. ValueError says why it cannot be trained on. `images`: a list that takes what
-    each image of the user messages names, in order ("<image>" stands for it in the text); without it images are refused."""
+    each image and video of the user messages names, in order ("<image>" or "<video>" stands for it in the text);
+    without it images and videos are refused."""
     if isinstance(sample, list):
         raise ValueError("is a JSON array; upload JSONL: one JSON object per line")
     if not isinstance(sample, dict):
@@ -218,8 +320,12 @@ def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
                 raise ValueError('every message needs a "role" (system, user or assistant)')
             content = _text(m.get("content"), images if m["role"] == "user" else None, tags)
             messages.append({"role": m["role"], "content": content})
-        if images and len(images) > MAX_IMAGES:
-            raise ValueError(f"has {len(images)} images; a sample takes at most {MAX_IMAGES}")
+        if images:
+            videos = [kind for _, _, kind, _ in _media_parts(sample)].count("video")
+            if len(images) - videos > MAX_IMAGES:
+                raise ValueError(f"has {len(images) - videos} images; a sample takes at most {MAX_IMAGES}")
+            if videos > MAX_VIDEOS:
+                raise ValueError(f"has {videos} videos; a sample takes at most {MAX_VIDEOS}")
     elif "conversations" in sample or "conversation" in sample:
         turns = sample.get("conversations", sample.get("conversation"))
         if not isinstance(turns, list) or not turns:
@@ -255,8 +361,8 @@ def is_rl(sample: Any) -> bool:
     return isinstance(sample, dict) and "answer" in sample and ("messages" in sample or "prompt" in sample)
 
 
-def to_rl(sample: dict[str, Any]) -> dict[str, Any]:
-    """An RL sample as {"messages", "answer"}. ValueError says why it cannot be used."""
+def to_rl(sample: dict[str, Any], images: list[str] | None = None) -> dict[str, Any]:
+    """An RL sample as {"messages", "answer"}. ValueError says why it cannot be used. `images`: as in `to_messages`."""
     answer = sample["answer"]
     if isinstance(answer, (int, float)) and not isinstance(answer, bool):  # math sets often store numbers
         answer = str(answer)
@@ -270,7 +376,7 @@ def to_rl(sample: dict[str, Any]) -> dict[str, Any]:
     else:
         chat = {**sample, "completion": "-"}
     # Checked as a chat with a placeholder reply, so prompts follow the same rules as chat samples.
-    row = {"messages": _prompt_of(chat), "answer": answer}
+    row = {"messages": _prompt_of(chat, images), "answer": answer}
     if "metadata" in sample:  # anything else a remote reward needs (test cases, rubric), passed to it unchanged
         row["metadata"] = sample["metadata"]
     return row
@@ -294,9 +400,9 @@ def _reply(value: Any, name: str) -> Message:
     return {"role": "assistant", "content": content}
 
 
-def _prompt_of(chat: dict[str, Any]) -> list[Message]:
+def _prompt_of(chat: dict[str, Any], images: list[str] | None = None) -> list[Message]:
     """An RL or preference sample's prompt: the chat without its last message, the reply to its last user message."""
-    messages = to_messages(chat)
+    messages = to_messages(chat, images)
     if not messages[-2]["content"].strip():
         raise ValueError("needs a non-empty last user message: the prompt the model replies to")
     return messages[:-1]
@@ -322,22 +428,22 @@ def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
 
 def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
     """The sample as the server stores it: {"messages"} for a chat, {"messages", "answer"} for RL, {"messages",
-    "chosen", "rejected"} for DPO. `images`: as in `to_messages`, for a chat."""
+    "chosen", "rejected"} for DPO. `images`: as in `to_messages`, for a chat or RL."""
     if is_rl(sample):
-        return to_rl(sample)
+        return to_rl(sample, images)
     if is_preference(sample):
         return to_preference(sample)
     return {"messages": to_messages(sample, images)}
 
 
 def _line(sample: Any) -> tuple[Any, str | None]:
-    """The sample as a line of a JSONL file: in the server's form, or as it is when it has images (they stay content
-    parts). Second, for a sample without images whose text holds a media tag, the error it is in a file with images."""
+    """The sample as a line of a JSONL file: in the server's form, or as it is when it has images or videos (they stay
+    content parts). Second, for a sample without them whose text holds a media tag, the error it is in a file with them."""
     images: list[str] = []
     try:
         row = to_sample(sample, images)
     except _Tagged as error:
-        if any(_image_parts(sample)):
+        if any(_media_parts(sample)):
             raise
         return to_sample(sample), str(error)
     return (sample if images else row), None
@@ -345,16 +451,16 @@ def _line(sample: Any) -> tuple[Any, str | None]:
 
 def write_jsonl(samples: Iterable[Any], path: str | os.PathLike[str]) -> int:
     """Write samples in any format above as JSONL in the server's form; returns how many. Raises on the first bad one.
-    A sample with images is written as it is; its images are read, paths relative to `path`'s folder."""
+    A sample with images or videos is written as it is; they are read, paths relative to `path`'s folder."""
     count = 0
     with_images = False
-    tagged = None   # the first sample without images whose text holds a media tag
+    tagged = None   # the first sample without images or videos whose text holds a media tag
     with Path(path).open("w", encoding="utf-8") as out:
         for number, sample in enumerate(samples, 1):
             try:
                 row, tag_error = _line(sample)
-                for _, _, source in _image_parts(row):
-                    read_image(source, Path(path).parent)
+                for _, _, kind, source in _media_parts(row):
+                    read_media(kind, source, Path(path).parent)
                     with_images = True
             except ValueError as error:
                 raise ValueError(f"sample {number}: {error}") from None
@@ -373,7 +479,8 @@ class CheckResult:
     chars: int = 0  # message text; a token is roughly 3-4 characters of English
     errors: list[str] = field(default_factory=list)
     kind: str | None = None  # "chat", "rl" for prompts with answers, or "preference" for DPO pairs
-    images: int = 0  # image parts in the samples; with any, the upload is a bundle (write_bundle)
+    images: int = 0  # image parts in the samples; with any, or any video, the upload is a bundle (write_bundle)
+    videos: int = 0  # video parts in the samples
 
     @property
     def ok(self) -> bool:
@@ -388,10 +495,10 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
     if size > BUNDLE_MAX_BYTES:
         result.errors.append(f"the file is over {BUNDLE_MAX_BYTES // 1000**3} GB")
         return result
-    unique: dict[str, int] = {}   # SHA-256 -> bytes of each image, packed once in a bundle
-    references = 0   # characters of the samples that name images; a bundle names each by its SHA-256
+    unique: dict[str, int] = {}   # SHA-256 -> bytes of each image or video, packed once in a bundle
+    references = 0   # characters of the samples that name images and videos; a bundle names each by its SHA-256
     kinds = set()
-    tagged: list[str] = []   # lines without images whose text holds a media tag: errors if the file has images
+    tagged: list[str] = []   # lines without images or videos whose text holds a media tag: errors if the file has any
     with path.open("rb") as f:
         for number, raw in enumerate(f, 1):
             if len(raw) > MAX_LINE_BYTES:
@@ -412,15 +519,17 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                 try:
                     row = to_sample(sample, found)
                 except _Tagged as error:
-                    if any(_image_parts(sample)):
+                    if any(_media_parts(sample)):
                         raise
                     row = to_sample(sample)
                     if len(tagged) < MAX_ERRORS:
                         tagged.append(f"line {number}: {error}")
-                for source in found:
-                    _, data = read_image(source, path.parent)
+                videos = 0
+                for _, _, kind, source in _media_parts(sample):
+                    _, data = read_media(kind, source, path.parent)
                     unique[hashlib.sha256(data).hexdigest()] = len(data)
                     references += len(source) - IMAGE_REF_CHARS
+                    videos += kind == "video"
             except json.JSONDecodeError as error:
                 _note(result, f"line {number}: not valid JSON ({error.msg})")
                 continue
@@ -428,19 +537,21 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
                 _note(result, f"line {number}: {error}")
                 continue
             result.samples += 1
-            result.images += len(found)
+            result.images += len(found) - videos
+            result.videos += videos
             replies = [row[k] for k in ("chosen", "rejected") if k in row]
             result.chars += sum(len(m["content"]) for m in row["messages"] + replies)
             kinds.add("rl" if "answer" in row else "preference" if "chosen" in row else "chat")
-    if result.images:   # the upload is a bundle
+    if result.images or result.videos:   # the upload is a bundle
         result.errors = sorted(result.errors + tagged, key=lambda error: int(error.split(":")[0].removeprefix("line ")))[:MAX_ERRORS]
         samples_bytes = size - references
         if len(unique) > BUNDLE_MAX_IMAGES:
-            result.errors.append(f"the file has {len(unique):,} different images; a dataset takes at most {BUNDLE_MAX_IMAGES:,}")
+            result.errors.append(f"the file has {len(unique):,} different images and videos; a dataset takes at most "
+                                 f"{BUNDLE_MAX_IMAGES:,}")
         if samples_bytes > MAX_FILE_BYTES:
-            result.errors.append(f"the samples without their images are over {MAX_FILE_BYTES // 1000**3} GB")
+            result.errors.append(f"the samples without their images and videos are over {MAX_FILE_BYTES // 1000**3} GB")
         elif samples_bytes + sum(unique.values()) > BUNDLE_MAX_BYTES:
-            result.errors.append(f"the samples and their images are over {BUNDLE_MAX_BYTES // 1000**3} GB")
+            result.errors.append(f"the samples and their images and videos are over {BUNDLE_MAX_BYTES // 1000**3} GB")
     elif size > MAX_FILE_BYTES:
         result.errors.append(f"the file is over {MAX_FILE_BYTES // 1000**3} GB")
     if not result.errors and not result.samples:
@@ -452,9 +563,9 @@ def check_file(path: str | os.PathLike[str]) -> CheckResult:
 
 
 def write_bundle(path: str | os.PathLike[str], out: str | os.PathLike[str]) -> int:
-    """Pack a JSONL file whose samples carry images into the tar the server takes: each image once, as
-    images/<SHA-256 of its bytes>.jpg|png, then the samples as data.jsonl with every image named "sha256:...".
-    Returns the number of image files. ValueError names the first line that cannot be packed."""
+    """Pack a JSONL file whose samples carry images or videos into the tar the server takes: each file once, as
+    images/<SHA-256 of its bytes>.jpg|png or videos/<SHA-256>.mp4, then the samples as data.jsonl with every image and
+    video named "sha256:...". Returns the number of files. ValueError names the first line that cannot be packed."""
     path = Path(path)
     packed: set[str] = set()
     with tarfile.open(out, "w") as tar, tempfile.TemporaryFile() as samples:
@@ -469,16 +580,16 @@ def write_bundle(path: str | os.PathLike[str], out: str | os.PathLike[str]) -> i
                 if not line:
                     continue
                 sample = json.loads(line)
-                for parts, i, source in _image_parts(sample):
+                for parts, i, kind, source in _media_parts(sample):
                     try:
-                        kind, data = read_image(source, path.parent)
+                        extension, data = read_media(kind, source, path.parent)
                     except ValueError as error:
                         raise ValueError(f"line {number}: {error}") from None
                     sha = hashlib.sha256(data).hexdigest()
                     if sha not in packed:
                         packed.add(sha)
-                        add(f"images/{sha}.{kind}", len(data), io.BytesIO(data))
-                    parts[i] = {"type": "image", "image": f"sha256:{sha}"}
+                        add(f"{kind}s/{sha}.{extension}", len(data), io.BytesIO(data))
+                    parts[i] = {"type": kind, kind: f"sha256:{sha}"}
                 samples.write(json.dumps(sample, ensure_ascii=False).encode() + b"\n")
         size = samples.tell()
         samples.seek(0)
@@ -516,7 +627,7 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
     """Convert a file to train.jsonl and val.jsonl in `out_dir`: rows in any accepted format, or user and assistant
     columns (`prompt_column`, several joined by a blank line when non-empty; `response_column`), e.g. of a CSV. With
     `answer_column` instead of `response_column`, the rows become RL samples (prompt + answer). Rows that cannot be
-    trained on are left out and counted. Samples with images keep them, their paths rewritten for `out_dir`. Shuffled
+    trained on are left out and counted. Samples with images or videos keep them, their paths rewritten for `out_dir`. Shuffled
     with `seed`; the validation set is `val_fraction` of the rows, at most 5,000."""
     import random
 
@@ -534,7 +645,7 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
         missing = [c for c in (*prompt_columns, target_column) if c not in rows[0]]
         if missing:
             raise ValueError(f"{Path(path).name} has no column {', '.join(missing)}; it has {', '.join(rows[0])}")
-    kept: list[tuple[int, Any, str | None]] = []   # row number, line, its error in a file with images
+    kept: list[tuple[int, Any, str | None]] = []   # row number, line, its error in a file with images or videos
     with_images = False
     errors: list[str] = []
     skipped = 0
@@ -550,14 +661,14 @@ def prepare_file(path: str | os.PathLike[str], out_dir: str | os.PathLike[str] =
             if system and isinstance(row, dict):
                 row = dict(row, system=system)
             line, tag_error = _line(row)
-            for parts, i, source in _image_parts(line):
-                read_image(source, Path(path).parent)
+            for parts, i, kind, source in _media_parts(line):
+                read_media(kind, source, Path(path).parent)
                 if not source.startswith("data:"):   # a path: train.jsonl may be in another folder
                     # resolved: ".." from a symlinked folder (/tmp on macOS) is not its parent in the path
-                    image = os.path.relpath((Path(path).parent / source).resolve(), out.resolve())
-                    parts[i] = {"type": "image", "image": image}
+                    file = os.path.relpath((Path(path).parent / source).resolve(), out.resolve())
+                    parts[i] = {"type": kind, kind: file}
             kept.append((number, line, tag_error))
-            if any(_image_parts(line)):
+            if any(_media_parts(line)):
                 with_images = True
         except ValueError as error:
             skipped += 1

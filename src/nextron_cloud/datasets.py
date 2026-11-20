@@ -33,29 +33,32 @@ class Datasets:
         self._client._request("DELETE", f"/v1/datasets/{dataset_id}")
 
     def upload(self, path: str | os.PathLike[str], *, name: str | None = None, check: bool = True) -> Dataset:
-        """Upload a JSONL file; one whose samples carry images goes with its image files, packed into one tar. With
-        `check`, the server's format check runs locally first, so a bad file fails before it is sent. The dataset is
-        "checking" when this returns; `wait` for "ready"."""
+        """Upload a JSONL file; one whose samples carry images or videos goes with those files, packed into one tar.
+        With `check`, the server's format check runs locally first, so a bad file fails before it is sent. The dataset
+        is "checking" when this returns; `wait` for "ready"."""
         path = Path(path)
         images = True   # not known without the check: packing then tells
         if check:
             result = check_file(path)
             if not result.ok:
                 raise NexTronError(f"{path.name} would not pass the format check: " + "; ".join(result.errors))
-            images = result.images > 0
+            images = result.images + result.videos > 0
         with tempfile.TemporaryDirectory() as work:
             bundle = Path(work) / "bundle.tar"
             if images:
                 images = write_bundle(path, bundle) > 0
-            file = bundle if images else path
-            body = {"name": name or path.name, "bytes": file.stat().st_size} | ({"images": True} if images else {})
-            created = self._client._post("/v1/datasets", body)
-            with httpx.Client(timeout=600) as storage, file.open("rb") as f:
-                if "part_urls" in created:
-                    for url in created["part_urls"]:
-                        _put(storage, url, f.read(created["part_bytes"]), {})
-                else:
-                    _put(storage, created["upload_url"], f.read(), created["upload_headers"])
+            return self._send(bundle if images else path, name or path.name, images)
+
+    def _send(self, file: Path, name: str, images: bool) -> Dataset:
+        """Upload a JSONL file, or with `images` a bundle (a tar of image and video files, with or without samples)."""
+        body = {"name": name, "bytes": file.stat().st_size} | ({"images": True} if images else {})
+        created = self._client._post("/v1/datasets", body)
+        with httpx.Client(timeout=600) as storage, file.open("rb") as f:
+            if "part_urls" in created:
+                for url in created["part_urls"]:
+                    _put(storage, url, f.read(created["part_bytes"]), {})
+            else:
+                _put(storage, created["upload_url"], f.read(), created["upload_headers"])
         return Dataset.model_validate(self._client._post(f"/v1/datasets/{created['id']}/complete"))
 
     def huggingface_splits(self, url: str, *, hf_token: str | None = None) -> builtins.list[dict[str, Any]]:

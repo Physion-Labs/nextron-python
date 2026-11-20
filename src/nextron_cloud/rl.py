@@ -27,13 +27,14 @@ class RL:
             "/v1/training/sessions/estimate", {"model": model, "max_hours": max_hours}, retry=True))
 
     def start(self, *, model: str, max_hours: float, max_context: int | None = None, max_grad_norm: float | None = None,
-              grad_clip: bool | None = None, idle_timeout: int | None = None, name: str | None = None,
-              tags: builtins.list[str] | None = None) -> RLRun:
+              grad_clip: bool | None = None, idle_timeout: int | None = None, images: bool = False,
+              name: str | None = None, tags: builtins.list[str] | None = None) -> RLRun:
         """Queue an RL run. It stops itself after `max_hours`, or after `idle_timeout` seconds without a sample or a
         training step. `max_context` (tokens) bounds a prompt with its reply, and a training sequence. Gradients are
-        clipped at `max_grad_norm` (1.0); `grad_clip=False` turns clipping off, which makes a step about 2 s shorter."""
+        clipped at `max_grad_norm` (1.0); `grad_clip=False` turns clipping off, which makes a step about 2 s shorter.
+        With `images` its prompts may hold images (the models whose `input` lists "image")."""
         settings = {"max_context": max_context, "max_grad_norm": max_grad_norm, "grad_clip": grad_clip,
-                    "idle_timeout": idle_timeout, "name": name, "tags": tags}
+                    "idle_timeout": idle_timeout, "images": images or None, "name": name, "tags": tags}
         body: dict[str, Any] = {"model": model, "max_hours": max_hours}
         body.update({key: value for key, value in settings.items() if value is not None})
         return RLRun.model_validate(self._client._post("/v1/training/sessions", body))

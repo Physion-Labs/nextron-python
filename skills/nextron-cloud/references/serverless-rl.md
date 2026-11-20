@@ -150,13 +150,45 @@ Per step, from your loop: Adam's `learning_rate`, `beta1`, `beta2`, `eps`, `weig
 Two kinds of id appear: `rl_...` is the RL run, for every `nextron-cloud` command. The `tinker` SDK prints its own
 ids and paths (`nx-...`, `tinker://nx-.../weights/final`); they are not arguments to anything here.
 
+### Prompts with images and videos
+
+Qwen3.8-27B, Gemma-4-26B-A4B, Qwen3.8-Next-180B and Muse-Glimmer-30B take images in a run's prompts (the models whose
+`input` lists `image`; images are opened organisation by organisation, as for datasets). Start the run with `images=True`, and write an image as a
+content part of a user message, as in a dataset:
+
+```python
+run = client.rl.start(model="qwen3.8-27b", max_hours=1, images=True)
+...
+with client.rl.connect(run.id) as live:
+    live.add_images(paths)                 # once, before the loop: every image file the prompts will use
+    prompt = [{"role": "user", "content": [{"type": "image", "image": "charts/q3.png"},
+                                           {"type": "text", "text": "What was revenue in Q3?"}]}]
+    batch = live.sample([prompt], n=8, max_tokens=64)
+```
+
+- An image is a JPEG or PNG file path, or a base64 `data:` URI; the limits are a dataset's (20 MB, 36 million
+  pixels, 16 a prompt). A URL is not fetched.
+- Videos work the same way on the models whose `input` lists `video`: `{"type": "video", "video": "clips/race.mp4"}`,
+  an MP4 file path, with a dataset's limits (500 MB, 1 second to 10 minutes, 4 a prompt). `add_images` takes video
+  files too: a path ending in `.mp4` is sent as a video.
+- The run must have an image before a prompt uses it. `add_images` uploads the files it lacks as one dataset,
+  the server checks and decodes them, and the run fetches them: a minute or two, more for thousands. `sample`
+  does the same for images it has not seen, so a loop that adds new images every round waits every round: send
+  the whole set first.
+- Each upload is a dataset of the organisation (named `images of rl_...`, kind `images`); delete it when the run is
+  over. A dataset with images that is already uploaded can be given to a run without a new upload:
+  `POST /v1/training/sessions/{id}/images {"dataset_id": ...}`, then name its images `sha256:<hex>`.
+- An image counts as tokens of the run's context: up to 514 on Qwen3.8-27B, about 260-282 on Gemma-4-26B-A4B. A run
+  is billed by time, so images cost what they add to sampling and training time.
+- Not with images or videos: tools in the same prompt, and Tinker's API (`rl.connect` only).
+
 When an RL run that trained at least one step stops, the model is saved and uploaded like a job's checkpoint. The
 run's id works with the job commands: `nextron-cloud jobs wait-checkpoint rl_...`, `jobs download rl_...`,
 `jobs logs rl_...`.
 
 ## What is not there yet
 
-Either way: sampling from earlier weights, named checkpoints during a run, LoRA, images, a second model in the same
+Either way: sampling from earlier weights, named checkpoints during a run, LoRA, a second model in the same
 run, per-token advantages. Through `rl.connect`: supervised steps (`cross_entropy`) and scoring text without
 training; Tinker's API has both. Through Tinker's API: `loss_fn=stable_reinforce` (pass `importance_sampling` to
 cookbook recipes whose default it is), `kl_penalty_coef`, custom losses. Unsupported calls fail with a message that

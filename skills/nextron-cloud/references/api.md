@@ -57,8 +57,8 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | does |
 |---|---|
 | `to_messages(sample)` | one sample in any accepted format → `[{"role", "content"}]`; `ValueError` says why not |
-| `write_jsonl(samples, path)` | write samples as `messages` JSONL (a sample with images as it is); returns the count; raises on the first bad one |
-| `check_file(path)` | `CheckResult(samples, chars, errors)`, `.ok`: the server's format check, locally |
+| `write_jsonl(samples, path)` | write samples as `messages` JSONL (a sample with images or videos as it is); returns the count; raises on the first bad one |
+| `check_file(path)` | `CheckResult(samples, chars, errors, kind, images, videos)`, `.ok`: the server's format check, locally |
 | `data.read_rows(path)` | rows of a `.jsonl`, `.json` or `.csv` file |
 | `data.prepare_file(path, out_dir=".", val_fraction=0.1, seed=0, prompt_column=None, response_column=None, answer_column=None, system=None)` (`prompt_column`: a name or a list joined by blank lines, given with `response_column` or, for RL samples, `answer_column`) | writes `train.jsonl` / `val.jsonl`; returns their paths and counts, `skipped`, `errors` |
 
@@ -75,9 +75,10 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | does |
 |---|---|
 | `rl.estimate(model, max_hours)` | `RLEstimate`: `price_per_gpu_hour`, `gpus`, `price_per_hour` (the two multiplied), `credits` (held for `max_hours`), `balance`, `enough`; US cents |
-| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, grad_clip=None, idle_timeout=None, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL |
+| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, grad_clip=None, idle_timeout=None, images=False, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL |
 | `rl.connect(id, log_dir=None, log_groups=4)` | `LiveRun` on a ready run (context manager; keeps the run alive while open). `log_dir`: `metrics.jsonl` and `rollouts.jsonl` (the first `log_groups` groups of every step) are written there |
 | `live.sample(prompts, n=1, max_tokens=None, temperature=1.0, top_p=1.0, top_k=-1, stop=None, timeout=None)` | `SampleBatch`: `batch[i][j]` is a `Sample` (`id`, `text`, `finish_reason`, `tokens`); `generate_seconds`, `seconds`. `prompts` is a list, also for one prompt; a prompt is a string, a list of messages, or `{"messages", "tools"}` / `{"tokens"}`. `n` above 1 needs a `temperature` above 0 |
+| `live.add_images(images, timeout=1800)` | sends the image files (paths or `data:` URIs) and MP4 video files (paths ending in `.mp4`) the run lacks and waits until it has them; a run started with `images=True` |
 | `live.train(batch, rewards, learning_rate=..., advantage="centered", loss="importance_sampling", clip_low=None, clip_high=None, substeps=1, beta1=None, beta2=None, eps=None, weight_decay=None, timeout=None)` | one training call; `rewards` has the batch's shape. Or `episodes=[Episode(samples, reward, group=None)]` for conversations. `TrainStep`, the step's record: `step`, `reward_mean`, `reward_std`, `groups`, `zero_variance_fraction`, `all_best_fraction`, `all_worst_fraction`, `replies`, `completion_length_mean`, `truncated_fraction`, `kl_sample_train`, `step_s`, `generation_s`, `train_s`, `client_s`, `session_s`, `tokens`, `tokens_per_s_per_gpu`, `rows`, `row_tokens`, `row_fill`, `seconds` |
 | `live.info()`, `live.finish()`, `live.close()` | the model, context and `round`; save the model and stop the run; stop the keep-alive only |
 | `rl.rollouts(id, step=None)` | `RLRollouts`: a few rollouts of a training call (the latest without `step`): `steps`, `step`, `groups` (the best and the worst group: `reward_mean`, `episodes` with `reward`, `advantage`, `turns` of `prompt` / `reply` / `truncated`); CLI `rl rollouts ID [--step N]` |

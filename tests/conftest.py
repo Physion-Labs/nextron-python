@@ -24,3 +24,20 @@ def make_client(monkeypatch: pytest.MonkeyPatch) -> Callable[[Handler], NexTron]
 
 def body(request: httpx.Request) -> dict:
     return json.loads(request.content)
+
+
+def mp4(width: int, height: int, seconds: float, fps: int = 10) -> bytes:
+    """An H.264 MP4 file of blank frames."""
+    import io
+
+    import av
+    out = io.BytesIO()
+    with av.open(out, mode="w", format="mp4") as target:
+        stream = target.add_stream("libx264", rate=fps)
+        stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
+        for n in range(int(seconds * fps)):
+            frame = av.VideoFrame(width, height, "yuv420p")
+            frame.pts = n
+            target.mux(stream.encode(frame))
+        target.mux(stream.encode())
+    return out.getvalue()

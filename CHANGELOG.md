@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0rc18
+
+- Serverless RL runs with images: `rl.start(..., images=True)`; a prompt's user message may hold image and video
+  parts with local paths, which `sample` sends to the run first (`live.add_images` sends a set ahead of the loop).
+- Videos (MP4) in datasets and Serverless RL prompts: `{"type": "video", "video": "clip.mp4"}` in a user message, up to
+  4 a sample, checked locally from the MP4 boxes, packed into the upload as images are; `CheckResult.videos` counts
+  them and `live.add_images` takes `.mp4` files.
+- RFT datasets (prompts with an answer) may hold images and videos in their user messages, as chat samples do.
+- The long-context model ids of Qwen3.8-27B, Gemma-4-26B-A4B and Qwen3.8-Next-180B take datasets with images and
+  videos (guide).
+
 ## 0.1.0rc17
 
 - Guide: LoRA is on every model but `kimi-k3.1-pro`, and the larger models train it on fewer GPUs than a full

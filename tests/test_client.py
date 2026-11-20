@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from nextron_cloud import APIError, NexTronError
-from tests.conftest import body
+from tests.conftest import body, mp4
 
 JOB = {"id": "job_1", "state": "queued", "model": "qwen3.8-27b", "layout": "auto", "dataset_id": "ds_1",
        "params": {}, "created": 1.0, "updated": 1.0}
@@ -507,6 +507,56 @@ def test_a_timeout_also_ends_the_wait_through_an_outage(make_client):
         with pytest.raises(APIError):
             live.sample(["hello"], timeout=0.3)
     assert time.monotonic() - started < 5   # not the two minutes an outage is otherwise waited out
+
+
+@pytest.mark.parametrize("kind, name", [("image", "cat.png"), ("video", "race.mp4")])
+def test_a_live_run_sends_the_images_and_videos_of_its_prompts_before_it_samples(make_client, tmp_path, kind, name):
+    import hashlib
+    import io
+    import struct
+    import tarfile
+
+    png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 640, 480)
+    file = png if kind == "image" else mp4(64, 48, 2)
+    (tmp_path / name).write_bytes(file)
+    sha = hashlib.sha256(file).hexdigest()
+    calls, uploaded, missing = [], {}, [[sha], [sha], []]   # asked for the prompt, then until the run has the file
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(f"{request.method} {path.removeprefix('/v1/training/sessions/rl_1')}")
+        if path.endswith("/images/missing"):
+            return httpx.Response(200, json={"missing": missing.pop(0)})
+        if path == "/v1/datasets":
+            assert body(request)["images"] is True
+            return httpx.Response(201, json={"id": "ds_1", "upload_url": "https://storage.test/put", "upload_headers": {}})
+        if request.url.host == "storage.test":
+            uploaded["tar"] = request.content
+            return httpx.Response(200)
+        if path in ("/v1/datasets/ds_1/complete", "/v1/datasets/ds_1"):
+            return httpx.Response(200, json={"id": "ds_1", "name": "images of rl_1", "state": "ready", "bytes": 1, "created": 0, "images": 1,
+                                             "kind": "images"})
+        if path == "/v1/training/sessions/rl_1/images":
+            assert body(request) == {"dataset_id": "ds_1"}
+            return httpx.Response(200, json={})
+        if path.endswith("/sample"):
+            uploaded["prompts"] = body(request)["prompts"]
+            return httpx.Response(200, json={"batch": "b1", "prompts": 1})
+        if path.endswith("/batches/b1"):
+            return httpx.Response(200, json={"done": True, "finished": 1, "prompts": 1, "samples": [[
+                {"id": "b1:0:0", "text": "a cat", "finish_reason": "stop", "tokens": 2}]]})
+        return httpx.Response(200, json={})
+
+    part = {"type": kind, kind: str(tmp_path / name)}
+    messages = [{"role": "user", "content": [part, {"type": "text", "text": "What is this?"}]}]
+    with make_client(handler).rl.connect("rl_1") as live:
+        assert live.sample([messages])[0][0].text == "a cat"
+    with tarfile.open(fileobj=io.BytesIO(uploaded["tar"])) as tar:
+        assert tar.getnames() == [f"{kind}s/{sha}.{name.split('.')[1]}"]
+    assert uploaded["prompts"][0]["messages"][0]["content"][0] == {"type": kind, kind: f"sha256:{sha}"}
+    assert messages[0]["content"][0] == part   # the caller's prompt keeps its path
+    wanted = ["POST /tinker/nextron/v1/images/missing", "POST /v1/datasets", "POST /images", "POST /tinker/nextron/v1/sample"]
+    assert [c for c in calls if c in wanted] == [wanted[0], wanted[1], wanted[2], wanted[0], wanted[0], wanted[3]]
 
 
 def test_a_run_billed_by_time_has_a_bill(make_client):

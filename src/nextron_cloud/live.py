@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import copy
+import hashlib
+import io
 import json
 import math
+import tarfile
+import tempfile
 import threading
 import time
 import uuid
@@ -13,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from ._client import APIError, NexTronError
+from .data import _media_parts, read_media
 from .types import Episode, Sample, SampleBatch, TrainStep
 
 if TYPE_CHECKING:
@@ -22,6 +28,7 @@ Prompt = str | Sequence[dict[str, Any]] | dict[str, Any]
 PAGE = 64  # prompts per answer when a batch's replies are fetched
 POLL_WAIT = 30  # seconds the server holds one poll
 OUTAGE_SECONDS = 120  # how long a call keeps trying through a restart of the API
+IMAGES_SECONDS = 1800  # how long new images may take to be checked, cleaned and brought to the run
 
 
 class LiveRun:
@@ -42,6 +49,7 @@ class LiveRun:
         self._client, self.id = client, run_id
         self._log_dir, self._log_groups = Path(log_dir) if log_dir else None, log_groups
         self._prompts: dict[str, dict[str, Any]] = {}  # "batch:index" -> the prompt, until the next training call
+        self._shas: dict[str, str] = {}  # an image file as it was read -> the SHA-256 of its bytes
         if self._log_dir:
             self._log_dir.mkdir(parents=True, exist_ok=True)
         self._base = base or f"/v1/training/sessions/{run_id}/tinker/nextron/v1"   # an inference run's is under /v1/inference
@@ -118,13 +126,18 @@ class LiveRun:
         """`n` replies to every prompt, sampled together from the current weights. A prompt is a string (one user
         message), a list of chat messages, or a dict: `{"messages": [...], "tools": [...]}` or `{"tokens": [ids]}`.
         `max_tokens` defaults to what the run's context leaves after the prompt. Returns the replies grouped by
-        prompt, in order: `batch[i][j].text`."""
+        prompt, in order: `batch[i][j].text`.
+
+        In a run started with `images=True`, a user message may hold images and videos as content parts, like a
+        dataset's: `{"type": "image", "image": "cat.jpg"}` (a path, or a base64 `data:` URI), `{"type": "video",
+        "video": "race.mp4"}`. Files the run has not seen are sent first (see `add_images`), which takes a minute or
+        two: send a fixed set once, before the loop."""
         started = time.monotonic()
         if isinstance(prompts, (str, dict)):
             raise TypeError("prompts is a list with one entry per prompt: give a single prompt as [prompt]")
         if n > 1 and temperature == 0:
             raise ValueError("n > 1 needs a temperature above 0: at temperature 0 the replies to a prompt are all the same")
-        asked = [_prompt(p) for p in prompts]
+        asked = self._with_images([_prompt(p) for p in prompts])
         body = {"prompts": asked, "n": n, "max_tokens": max_tokens, "temperature": temperature,
                 "top_p": top_p, "top_k": top_k, "stop": list(stop or []), "key": uuid.uuid4().hex}
         made = self._call("POST", "/sample", body)
@@ -138,6 +151,70 @@ class LiveRun:
             samples: list[Any] = [group for page in pages for group in page]
         return SampleBatch(id=made["batch"], samples=samples, generate_seconds=done.get("generate_seconds"),
                            seconds=round(time.monotonic() - started, 3))
+
+    def add_images(self, images: Sequence[str | Path], *, timeout: float = IMAGES_SECONDS) -> None:
+        """Send image files (JPEG or PNG; a path or a base64 `data:` URI each) and video files (MP4, a path ending in
+        .mp4) to the run ahead of the prompts that hold them. The ones it does not have yet are uploaded as one
+        dataset, checked and decoded on the server, and brought to the run: a minute or two, more for thousands.
+        Returns when the run has them all."""
+        sources = {}
+        for image in images:
+            kind = "video" if str(image).lower().endswith(".mp4") else "image"
+            sources[self._sha(kind, str(image))] = (kind, str(image))
+        self._send_images(sources, timeout)
+
+    def _sha(self, kind: str, source: str) -> str:
+        """The SHA-256 of an image's or a video's bytes; a file is read once while it does not change."""
+        key = source
+        if not source.startswith("data:"):
+            stat = Path(source).stat() if Path(source).is_file() else None
+            key = f"{source}:{stat.st_mtime_ns}:{stat.st_size}" if stat else source
+        if key not in self._shas:
+            self._shas[key] = hashlib.sha256(read_media(kind, source, Path.cwd())[1]).hexdigest()
+        return self._shas[key]
+
+    def _with_images(self, asked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The prompts with every image and video named by its SHA-256, once the run has the files."""
+        sources: dict[str, tuple[str, str]] = {}
+        out = []
+        for prompt in asked:
+            if any(not source.startswith("sha256:") for _, _, _, source in _media_parts(prompt)):
+                prompt = copy.deepcopy(prompt)   # the caller's messages keep their paths
+                for parts, index, kind, source in _media_parts(prompt):
+                    if not source.startswith("sha256:"):
+                        sha = self._sha(kind, source)
+                        sources[sha] = kind, source
+                        parts[index] = {"type": kind, kind: f"sha256:{sha}"}
+            out.append(prompt)
+        if sources:
+            self._send_images(sources, IMAGES_SECONDS)
+        return out
+
+    def _send_images(self, sources: dict[str, tuple[str, str]], timeout: float) -> None:
+        """Bring the images and videos (SHA-256 -> "image" | "video", a path or data: URI) the run lacks to it:
+        upload, check, attach, wait."""
+        deadline = time.monotonic() + timeout
+        missing: list[str] = self._call("POST", "/images/missing", {"sha256": sorted(sources)})["missing"]
+        if not missing:
+            return
+        with tempfile.TemporaryDirectory() as work:
+            bundle = Path(work) / "images.tar"
+            with tarfile.open(bundle, "w") as tar:
+                for sha in missing:
+                    kind, source = sources[sha]
+                    extension, data = read_media(kind, source, Path.cwd())
+                    info = tarfile.TarInfo(f"{kind}s/{sha}.{extension}")
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+            dataset = self._client.datasets._send(bundle, f"images of {self.id}", True)
+        dataset = self._client.datasets.wait(dataset.id, timeout=timeout)
+        if dataset.state != "ready":
+            raise NexTronError("the images did not pass their check: " + "; ".join(dataset.errors))
+        self._client._post(f"/v1/training/sessions/{self.id}/images", {"dataset_id": dataset.id})
+        while self._call("POST", "/images/missing", {"sha256": missing})["missing"]:
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"the run still lacks images after {timeout} s")
+            time.sleep(3)
 
     def train(self, batch: Sequence[Sequence[Sample]] | None = None, rewards: Sequence[Sequence[float]] | None = None, *,
               learning_rate: float, episodes: Sequence[Episode] | None = None, advantage: str = "centered",
