@@ -1,7 +1,7 @@
 # Reinforcement fine-tuning (RFT)
 
 Reinforcement fine-tuning trains on prompts with a reward instead of replies to copy. It runs GRPO; the API calls it
-`train_type="grpo"`. This page is about that managed job: NexTron runs the loop and a built-in reward scores the replies. To run your
+`train_type="grpo"`. This page is about that managed job: NexCloud runs the loop and a built-in reward scores the replies. To run your
 own loop with your own reward code, environments or tools, use Serverless RL
 ([serverless-rl.md](serverless-rl.md), `nextron-cloud rl ...`).
 
@@ -10,9 +10,9 @@ A GRPO job trains on prompts, not on replies to copy. Each round it takes `batch
 and worse replies to the same prompt. Full-parameter only. The models that
 train it list `grpo` in `client.models()[i].methods`; use the job's `train_type="grpo"`.
 
-The reward is built in (`boxed`, `exact`: 1 or 0 against the prompt's answer), or your own code (`remote`): NexTron
+The reward is built in (`boxed`, `exact`: 1 or 0 against the prompt's answer), or your own code (`remote`): NexCloud
 Cloud generates and trains, and each round's replies come to a script you run, which sends back their scores. Your code
-runs on your machine, never on NexTron Cloud.
+runs on your machine, never on NexCloud.
 
 ## Data
 

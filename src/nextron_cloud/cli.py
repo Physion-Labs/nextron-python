@@ -244,7 +244,7 @@ def _logs(client: NexTron, args: argparse.Namespace) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="nextron-cloud", description="NexTron Cloud from the shell. Reads NEXTRON_API_KEY.")
+    parser = argparse.ArgumentParser(prog="nextron-cloud", description="NexCloud from the shell. Reads NEXTRON_API_KEY.")
     groups = parser.add_subparsers(dest="group", required=True)
 
     cmd = groups.add_parser("guide", help="how to run experiments: read this first (no key needed)")
@@ -354,7 +354,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("dest")
     cmd.set_defaults(run=lambda c, a: {"path": str(c.jobs.export(a.job_id, a.dest))})
 
-    rl = groups.add_parser("rl", help="Serverless RL: your own loop samples and trains on NexTron's GPUs").add_subparsers(dest="cmd", required=True)
+    rl = groups.add_parser("rl", help="Serverless RL: your own loop samples and trains on NexCloud's GPUs").add_subparsers(dest="cmd", required=True)
     cmd = rl.add_parser("start", help="price for --max-hours, then start with --yes")
     cmd.add_argument("--model", required=True)
     cmd.add_argument("--max-hours", type=_positive(float), required=True, help="the run stops itself after this long")
@@ -388,7 +388,7 @@ def _parser() -> argparse.ArgumentParser:
         cmd.add_argument("run_id")
         cmd.set_defaults(run=run)
 
-    inference = groups.add_parser("inference", help="serve a trained job's model on NexTron's GPUs and call it").add_subparsers(dest="cmd", required=True)
+    inference = groups.add_parser("inference", help="serve a trained job's model on NexCloud's GPUs and call it").add_subparsers(dest="cmd", required=True)
     cmd = inference.add_parser("start", help="price for --max-hours, then start with --yes")
     cmd.add_argument("--job", required=True, help="a training job that succeeded in the last 7 days")
     cmd.add_argument("--max-hours", type=_positive(float), required=True, help="the run stops itself after this long")
@@ -408,7 +408,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.set_defaults(run=lambda c, a: c.inference.stop(a.run_id, wait=a.wait))
     for name, run, text in (("get", lambda c, a: c.inference.get(a.run_id), None),
                             ("url", lambda c, a: {"openai_base_url": c.inference.openai_base_url(a.run_id)},
-                             "the base URL for an OpenAI client; its api_key is your NexTron key")):
+                             "the base URL for an OpenAI client; its api_key is your NexCloud key")):
         cmd = inference.add_parser(name, help=text)
         cmd.add_argument("run_id")
         cmd.set_defaults(run=run)

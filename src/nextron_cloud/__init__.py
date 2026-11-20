@@ -1,4 +1,4 @@
-"""Python client for the NexTron Cloud fine-tuning API."""
+"""Python client for the NexCloud fine-tuning API."""
 from ._client import APIError, NexTron, NexTronError
 from ._version import __version__
 from .data import CheckResult, check_file, to_messages, write_jsonl

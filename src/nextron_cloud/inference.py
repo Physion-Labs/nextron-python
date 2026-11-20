@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class Inference:
     """Inference runs: the model a training job saved, served on the GPUs of the cluster that trained it, so you can try
     it right after training and download it only when it is good. A job's model stays there 7 days. Call a run with
-    `connect` (NexTron's batch `sample`) or any OpenAI client (`openai_base_url`). Billed by time from ready to stopped."""
+    `connect` (NexCloud's batch `sample`) or any OpenAI client (`openai_base_url`). Billed by time from ready to stopped."""
 
     def __init__(self, client: NexTron):
         self._client = client
@@ -64,7 +64,7 @@ class Inference:
         return LiveRun(self._client, run_id, base=f"/v1/inference/{run_id}/nextron/v1")
 
     def openai_base_url(self, run_id: str) -> str:
-        """The base URL for an OpenAI client (`chat.completions`, `completions`, `models`); its api_key is your NexTron
+        """The base URL for an OpenAI client (`chat.completions`, `completions`, `models`); its api_key is your NexCloud
         key. Any model name is the run's model. Through the public API one call must finish in about 90 seconds; use
         `connect` for large batches."""
         return f"{str(self._client._http.base_url).rstrip('/')}/v1/inference/{run_id}/v1"

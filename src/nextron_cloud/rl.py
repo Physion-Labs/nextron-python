@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 class RL:
     """Serverless RL: an RL run is a model on a node of GPUs that your own loop samples from and trains, step by
-    step. NexTron runs every sample and every optimizer step. Drive one with `connect` (NexTron's own calls) or with
+    step. NexCloud runs every sample and every optimizer step. Drive one with `connect` (NexCloud's own calls) or with
     the `tinker` SDK and tinker-cookbook (`env`). Billed by time from ready to stopped."""
 
     def __init__(self, client: NexTron):
@@ -80,7 +80,7 @@ class RL:
         return RLRollouts.model_validate(self._client._get(f"/v1/training/sessions/{run_id}/rollouts{query}"))
 
     def connect(self, run_id: str, *, log_dir: str | Path | None = None, log_groups: int = 4) -> LiveRun:
-        """Drive a ready run with NexTron's own calls (`sample`, `train`): the short way, see `LiveRun`. For code
+        """Drive a ready run with NexCloud's own calls (`sample`, `train`): the short way, see `LiveRun`. For code
         written for the `tinker` SDK use `env` instead. `log_dir`: a directory for `metrics.jsonl` and
         `rollouts.jsonl` (what the model wrote in the first `log_groups` groups of every step, with the rewards)."""
         return LiveRun(self._client, run_id, log_dir=log_dir, log_groups=log_groups)

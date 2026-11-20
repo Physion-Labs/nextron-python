@@ -1,18 +1,18 @@
 ---
 name: nextron-cloud
-description: Run fine-tuning experiments on NexTron Cloud with the `nextron-cloud` Python SDK or CLI — choose a model, prepare and check JSONL training data, upload or import datasets from Hugging Face, estimate cost, start and watch training jobs, compare runs, download checkpoints and evaluate them. Use whenever the user wants to fine-tune, train, SFT or LoRA a model on NexTron, prepare data for it, check on a NexTron job, or run a training experiment. Also covers Serverless RL: running a user's own RL loop (this SDK's sample / train, or tinker / tinker-cookbook) on NexTron's GPUs.
+description: Run fine-tuning experiments on NexCloud with the `nextron-cloud` Python SDK or CLI — choose a model, prepare and check JSONL training data, upload or import datasets from Hugging Face, estimate cost, start and watch training jobs, compare runs, download checkpoints and evaluate them. Use whenever the user wants to fine-tune, train, SFT or LoRA a model on NexTron, prepare data for it, check on a NexTron job, or run a training experiment. Also covers Serverless RL: running a user's own RL loop (this SDK's sample / train, or tinker / tinker-cookbook) on NexCloud's GPUs.
 ---
 
-# NexTron Cloud
+# NexCloud
 
-NexTron Cloud trains open models on its own H100s, in two modes:
+NexCloud trains open models on its own H100s, in two modes:
 
 - **Managed training** (most of this guide): one request = one whole training run. You send a model, a dataset and a few
   settings; the service trains and leaves a checkpoint (a Hugging Face model directory) to download. Supervised
   fine-tuning (full or LoRA), reinforcement fine-tuning with built-in rewards (RFT, GRPO) and preference training (DPO). Billed by tokens trained.
 - **Serverless RL** ([references/serverless-rl.md](references/serverless-rl.md)): an RL run is a loaded model the
   user's own loop samples from and trains step by step (`client.rl.connect`: `sample`, score in your code, `train`;
-  or the `tinker` SDK and tinker-cookbook unchanged); NexTron runs each sample and each optimizer step. For custom
+  or the `tinker` SDK and tinker-cookbook unchanged); NexCloud runs each sample and each optimizer step. For custom
   RL environments, tools and rewards. Billed by time.
 
 Nothing heavy runs on the user's machine in either mode. Text, and images for SFT on two models (references/data.md).
@@ -29,7 +29,7 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 | download, serve and evaluate the checkpoint | [references/checkpoints.md](references/checkpoints.md) |
 | reinforcement fine-tuning (RFT, a GRPO job): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
 | preference training (a DPO job): prompts with a chosen and a rejected reply | [references/dpo.md](references/dpo.md) |
-| Serverless RL: your own RL loop (this SDK's `sample` / `train`, or the tinker SDK) on NexTron's GPUs, billed by time | [references/serverless-rl.md](references/serverless-rl.md) |
+| Serverless RL: your own RL loop (this SDK's `sample` / `train`, or the tinker SDK) on NexCloud's GPUs, billed by time | [references/serverless-rl.md](references/serverless-rl.md) |
 | try a trained model right after training, without downloading it: an inference run, called with this SDK or an OpenAI client | [references/inference.md](references/inference.md) |
 | every SDK call and CLI command | [references/api.md](references/api.md) |
 

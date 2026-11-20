@@ -44,7 +44,7 @@ def _api_error(r: httpx.Response) -> APIError:
 
 
 class NexTron:
-    """Client for the NexTron Cloud API. The key comes from `api_key` or NEXTRON_API_KEY."""
+    """Client for the NexCloud API. The key comes from `api_key` or NEXTRON_API_KEY."""
 
     def __init__(self, api_key: str | None = None, *, base_url: str | None = None, org: str | None = None,
                  timeout: float = 60.0, max_retries: int = 3):

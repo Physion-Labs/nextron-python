@@ -25,8 +25,8 @@ OUTAGE_SECONDS = 120  # how long a call keeps trying through a restart of the AP
 
 
 class LiveRun:
-    """A ready RL run driven with NexTron's own calls: sample a batch of prompts, score the replies in your own
-    code, train on the rewards. NexTron keeps the sampled tokens and computes the advantages, so only your prompts and
+    """A ready RL run driven with NexCloud's own calls: sample a batch of prompts, score the replies in your own
+    code, train on the rewards. NexCloud keeps the sampled tokens and computes the advantages, so only your prompts and
     rewards travel. `client.rl.connect(run_id)` makes one; close it (or use `with`) when your loop ends.
 
     While it is open a background thread tells the run you are alive: a run whose client has been silent for

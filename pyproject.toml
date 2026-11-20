@@ -1,7 +1,7 @@
 [project]
 name = "nextron-cloud"
 dynamic = ["version"]
-description = "Official Python client for the NexTron Cloud fine-tuning API."
+description = "Official Python client for the NexCloud fine-tuning API."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

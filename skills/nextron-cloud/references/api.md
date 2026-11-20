@@ -95,7 +95,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `inference.start(job_id, max_hours, idle_timeout=None, name=None, tags=None)` | `InferenceRun` in `queued` (the fields of `RLRun`; `params.job_id`); 422 for a job that did not succeed or a model without inference, 410 for a job that finished more than 7 days ago |
 | `inference.get(id)`, `inference.list()`, `inference.wait(id, timeout=None, poll_interval=15, on_poll=None)`, `inference.stop(id, wait=False)` | as for RL runs |
 | `inference.connect(id)` | `LiveRun` with `sample` (`train` raises `NexTronError`) |
-| `inference.openai_base_url(id)` | the base URL for an OpenAI client; `api_key` is your NexTron key |
+| `inference.openai_base_url(id)` | the base URL for an OpenAI client; `api_key` is your NexCloud key |
 
 ## CLI
 

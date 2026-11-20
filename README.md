@@ -7,7 +7,7 @@
 
 > **Release candidate.** The API may still change before 0.1.0; install with `--prerelease=allow`.
 
-Python SDK and CLI for [NexTron Cloud](https://nextron.physionlabs.ai), which trains open models in two modes and
+Python SDK and CLI for [NexCloud](https://nextron.physionlabs.ai), which trains open models in two modes and
 serves what it trained:
 
 - **Managed training**: one request (model + dataset + settings) fine-tunes a model and leaves a checkpoint to download:
@@ -48,7 +48,7 @@ Install, set the key, then paste this to your coding agent (Claude Code, Codex, 
 prepares the data and shows you the cost before it starts anything.
 
 ```text
-Run a training experiment for me on NexTron Cloud, a managed training service: one request fine-tunes a model on
+Run a training experiment for me on NexCloud, a managed training service: one request fine-tunes a model on
 its GPUs (on example replies, on pairs of a preferred and a rejected reply, or with reinforcement learning against
 known answers) and leaves a checkpoint to download.
 
@@ -98,7 +98,7 @@ The guide is written for people and coding agents alike, in [skills/nextron-clou
 - [dpo.md](skills/nextron-cloud/references/dpo.md): preference training (a DPO job) on pairs of a chosen and a rejected reply
 - [checkpoints.md](skills/nextron-cloud/references/checkpoints.md): download, serve, evaluate
 - [serverless-rl.md](skills/nextron-cloud/references/serverless-rl.md): Serverless RL: your own RL loop with `sample`
-  and `train`, or the `tinker` SDK and tinker-cookbook, on NexTron's GPUs
+  and `train`, or the `tinker` SDK and tinker-cookbook, on NexCloud's GPUs
 - [inference.md](skills/nextron-cloud/references/inference.md): an inference run: try a trained model without downloading it
 - [api.md](skills/nextron-cloud/references/api.md): every SDK call and CLI command
 - [examples/compare_outputs.py](examples/compare_outputs.py): answer held-out prompts with the fine-tuned and the base

@@ -1,18 +1,18 @@
 # Serverless RL
 
-NexTron Cloud has two modes.
+NexCloud has two modes.
 
 | | Managed training | Serverless RL |
 |---|---|---|
 | You send | a dataset and settings | prompts and rewards from your own loop |
-| NexTron runs | the whole training run | every sample and every optimizer step, on the run's GPUs |
+| NexCloud runs | the whole training run | every sample and every optimizer step, on the run's GPUs |
 | Client | this SDK: `jobs` | this SDK: `rl.connect`; or the `tinker` SDK, pointed at the run |
 | Billed by | tokens trained | time, from ready to stopped |
 | Use it for | fine-tuning on examples; RL with a built-in reward | your own RL loop: environments, tools, multi-turn episodes, your reward code |
 
-An RL run is a model loaded on a node of GPUs, kept for you until you stop it. Your loop, environments and reward code run on your machine; NexTron
+An RL run is a model loaded on a node of GPUs, kept for you until you stop it. Your loop, environments and reward code run on your machine; NexCloud
 samples with vLLM and trains all of the model's weights (not an adapter) on the same GPUs. There are two ways to drive
-one: NexTron's own calls (below, the default) and Tinker's API, for code already written for the `tinker` SDK.
+one: NexCloud's own calls (below, the default) and Tinker's API, for code already written for the `tinker` SDK.
 
 A model that has Serverless RL lists `interactive` under its methods in `nextron-cloud models`, with
 `price_per_gpu_hour`; `rl start` answers "coming soon" for one without it.

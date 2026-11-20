@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc16
+
+- The product is called NexCloud: the guides, the CLI's help and the docstrings say so. The package, the
+  `nextron-cloud` command, `NEXTRON_API_KEY` and the `NexTron` client keep their names.
+
 ## 0.1.0rc15
 
 - `datasets prepare` with column options leaves out and counts a row that lacks one of the named columns (it kept the

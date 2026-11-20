@@ -1,6 +1,6 @@
 # Agent guide
 
-**To run fine-tuning experiments on NexTron Cloud** (no other context needed): read
+**To run fine-tuning experiments on NexCloud** (no other context needed): read
 [skills/nextron-cloud/SKILL.md](skills/nextron-cloud/SKILL.md) first, then the reference it points to for each step.
 It covers setup and the API key, the rules (ask the owner before anything that costs money), data, training,
 monitoring, checkpoints and evaluation. Install with uv: `uv venv && uv pip install --prerelease=allow nextron-cloud` (or `uv add --prerelease=allow
