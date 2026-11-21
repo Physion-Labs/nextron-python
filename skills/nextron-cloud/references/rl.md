@@ -11,7 +11,7 @@ and worse replies to the same prompt. Full-parameter only. The models that
 train it list `grpo` in `client.models()[i].methods`; use the job's `train_type="grpo"`.
 
 The reward is built in (`boxed`, `exact`: 1 or 0 against the prompt's answer), or your own code (`remote`): NexCloud
-Cloud generates and trains, and each round's replies come to a script you run, which sends back their scores. Your code
+generates and trains, and each round's replies come to a script you run, which sends back their scores. Your code
 runs on your machine, never on NexCloud.
 
 ## Data

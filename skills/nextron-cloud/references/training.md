@@ -19,7 +19,7 @@ Longer-context versions are separate ids (for example `...-256k`) with their own
 - **full**: every weight trained; FP32 master weights, gradients and AdamW states, BF16 compute.
 - **lora**: rank 32, alpha 64, on every linear layer of the language model (routed MoE experts excluded); base
   weights frozen. The adapters are **merged** into the checkpoint, so it is a full model like a full fine-tune.
-  Every model but `kimi-k3.1-pro` has it (a model's `methods` say so), and the larger models train LoRA on fewer
+  Every model but `kimi-k3.1-pro` and the long-context ids (`...-256k`, `...-1m`) has it (a model's `methods` say so), and the larger models train LoRA on fewer
   GPUs than a full fine-tune: with `layout="auto"` the job takes the smallest setup that trains it.
 
 ## Params
@@ -47,9 +47,9 @@ All optional; the server fills the rest from a tested recipe for the model.
 
 ## Batch and steps
 
-Without `batch_size`, each GPU packs about 64K tokens a step (128K for `gemma-4-26b-a4b`), so a step on 8 GPUs trains
-roughly 470K tokens, whatever the sample lengths. Steps per epoch ≈ dataset tokens (`dataset.tokens[model].total`) /
-tokens a step: 5M tokens on 8 GPUs ≈ 11 steps an epoch. `max_steps` cannot add steps beyond the epochs.
+Without `batch_size`, each GPU packs about 64K tokens a step (128K for `qwen3.8-27b` and `gemma-4-26b-a4b`), so a step
+on 8 GPUs trains roughly 470K tokens (about 1M on those two), whatever the sample lengths. Steps per epoch ≈ dataset
+tokens (`dataset.tokens[model].total`) / tokens a step: 5M tokens on 8 GPUs ≈ 11 steps an epoch at 64K, 5 at 128K. `max_steps` cannot add steps beyond the epochs.
 
 `batch_size` (samples a step, where `models()` allows it) gives smaller, more numerous steps, but each GPU must get at
 least 8K tokens a step: the smallest batch is about 8 GPUs × 8,192 / average sample length (the server refuses less
@@ -61,7 +61,7 @@ under one step at the default batch and 17 steps at the smallest allowed `batch_
 
 ### Small datasets
 
-A dataset under one step's tokens (about 470K on 8 GPUs, for example a few thousand short support conversations)
+A dataset under one step's tokens (about 470K on 8 GPUs, 1M on the 128K models; for example a few thousand short support conversations)
 trains **one step per epoch**, and `batch_size` cannot help when the minimum batch is larger than the dataset. Then:
 
 - `num_train_epochs` (up to 20) is then the number of optimizer steps. Sweep it (for example 3 / 6 / 10) and pick by
@@ -103,7 +103,7 @@ trains **one step per epoch**, and `batch_size` cannot help when the minimum bat
 - **Smoke run first** on new data or a new model, when the data is larger than a few steps: `max_steps: 3`, an
   explicit `layout` (the smallest in `methods[...].layouts`, so the estimate is not held for a larger setup) and,
   where the model takes one, the smallest `batch_size` (a too-small one gets a 422 naming the minimum). A default step
-  is large (about 470K tokens on 8 GPUs, 1M for `gemma-4-26b-a4b`), so 3 default steps can cost half an epoch. Every
+  is large (about 470K tokens on 8 GPUs, 1M for `qwen3.8-27b` and `gemma-4-26b-a4b`), so 3 default steps can cost half an epoch. Every
   succeeded job also uploads a full checkpoint (tens of GB), smoke runs included. Its loss should be finite and in a normal range
   (about 0.3-3 for chat data). For small datasets see above: the real run is already small.
 - **One change at a time** between runs; same data, same seed.

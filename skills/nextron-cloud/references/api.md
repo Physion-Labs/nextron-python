@@ -118,7 +118,7 @@ nextron-cloud jobs list [--tag T] | get ID | wait ID | progress ID | billing ID 
 nextron-cloud jobs events ID [--after SEQ] [--follow] [--until training|checkpoint]
 nextron-cloud jobs serve-rewards ID FILE.py:FUNCTION     # remote-reward GRPO: score until training is over
 nextron-cloud jobs wait-checkpoint ID | checkpoint ID | download ID DEST [--include GLOB ...] | export ID DEST
-nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-norm G] [--no-grad-clip] [--idle-timeout S]
+nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-norm G] [--no-grad-clip] [--idle-timeout S] [--images]
                        [--name N] [--tag T ...] [--yes]
 nextron-cloud rl list | get ID | wait ID [--timeout S] | env ID | stop ID [--wait]   # env: shell lines for eval, without the key
 nextron-cloud rl metrics ID | rollouts ID [--step N]

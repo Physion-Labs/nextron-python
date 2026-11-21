@@ -36,7 +36,7 @@ job = client.jobs.create(model="qwen3.8-27b", dataset_id=ds.id,
 | Param | Default | |
 |---|---|---|
 | `beta` | 0.1 | how far the model may move from where it started: lower moves further |
-| `learning_rate` | 5e-7 | DPO wants a much lower rate than SFT |
+| `learning_rate` | the model's | `client.models()[i].methods["dpo"].learning_rate`: 5e-7 on most models, 2e-6 on some. DPO wants a much lower rate than SFT |
 | `num_train_epochs` or `max_steps` | 1 epoch | |
 | `warmup_ratio`, `weight_decay`, `lr_scheduler_type`, `seed` | as SFT | |
 

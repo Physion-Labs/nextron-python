@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc20
+
+- Guide: Qwen3.8-27B packs about 128K tokens per GPU a step by default; the long-context ids have no LoRA; DPO's
+  default learning rate is the model's (`methods["dpo"].learning_rate`); `rl start --images` in the CLI reference.
+
 ## 0.1.0rc19
 
 - `nextron-cloud rl start --images`: a run whose prompts hold images and videos, from the command line.
