@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0rc21
+
+- Video settings: `video_fps`, `video_max_frames` and `video_frame_tokens` on jobs (`--param`) and RL runs
+  (`rl.start`, `rl start --video-fps / --video-max-frames / --video-frame-tokens`) on the Qwen models; the guide lists the
+  choices (Gemma at its defaults for now).
+  Videos are 1 to 60 seconds, cleaned at up to 16 frames a second.
+
 ## 0.1.0rc20
 
 - Guide: Qwen3.8-27B packs about 128K tokens per GPU a step by default; the long-context ids have no LoRA; DPO's

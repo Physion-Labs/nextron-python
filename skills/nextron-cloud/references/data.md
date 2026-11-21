@@ -161,7 +161,7 @@ dataset whose videos are not open to yours ends `invalid` with "videos are not o
   `{"type": "image_url", "image_url": {"url": ...}}` is read the same way. A video is a file path. A URL is not
   fetched: download the file first.
 - Images: JPEG and PNG only, up to 20 MB and 36 million pixels each, no side over 200 times the other, at most 16 a
-  sample. Videos: MP4 only, up to 500 MB, 1 second to 10 minutes and 3840 x 2160 a frame each, at most 4 a sample.
+  sample. Videos: MP4 only, up to 500 MB, 1 to 60 seconds and 3840 x 2160 a frame each, at most 4 a sample.
   In user messages only.
 - Do not write `<image>`, `<video>` or `<audio>` in the text of such a dataset.
 - `datasets check` reads every image file's header and every video's MP4 boxes, as the server does on upload: type,
@@ -176,8 +176,29 @@ dataset whose videos are not open to yours ends `invalid` with "videos are not o
   training reads (see below). `tokens` on the dataset includes them per model.
 - A sample with images or videos is never cut: a job is refused if the dataset's longest sample is over `max_seq_len`.
 - Training reads a copy of each image: 8-bit RGB, transparency on white, turned as its EXIF says, and scaled down
-  only above 1.6 million pixels. Each video is re-encoded as H.264 at up to 4 frames a second and up to 1280 x 720,
+  only above 1.6 million pixels. Each video is re-encoded as H.264 at up to 16 frames a second and up to 1280 x 720,
   with at least 32 frames; its audio is dropped.
-- Not with images or videos yet: validation sets and DPO. A sample with images or videos must fit one GPU's row (64K
-  tokens on Qwen), also on a long-context id; text samples beside it may be longer.
+- Not with images or videos yet: validation sets and DPO. A sample with images or videos must fit one GPU's row (128K
+  tokens on Qwen3.8-27B, 64K on the others), also on a long-context id; text samples beside it may be longer.
+
+### Video settings
+
+A job (`--param`) or an RL run (`rl.start(...)`, `rl start --video-...`) chooses how its videos are sampled:
+
+| param | Qwen3.8-27B, Qwen3.8-Next-180B | Gemma-4-26B-A4B |
+|---|---|---|
+| `video_fps` | 1, 2, 4 (default), 8, 16 frames a second | - (frames are spread over the video) |
+| `video_max_frames` | 2 to 960, default 40 | 32 for now (up to 256 soon) |
+| `video_frame_tokens` | 256, 512 (default), 900 (a 720p frame pair in full) | 70 for now (140, 280 soon) |
+
+```bash
+nextron-cloud jobs create --model qwen3.8-27b --dataset ds_... --param video_fps=8 --param video_max_frames=200
+```
+
+- More frames and tokens train more detail and cost more: a video's tokens are about its frames x its tokens a frame
+  (Qwen: a pair of frames shares one grid). `jobs create` without `--yes` shows the settings (`video`) and the
+  dataset's tokens at them.
+- A choice the model does not take, or a video over the row at the chosen settings, is refused with what fits.
+- Gemma will take at most 20,480 tokens a video (256 frames at 70, about 70 at 280). Its RL runs and RFT keep 32
+  frames at 70 tokens.
   Serverless RL takes them in its prompts: see serverless-rl.md.
