@@ -188,13 +188,15 @@ A job (`--param`) or an RL run (`rl.start(...)`, `rl start --video-...`) chooses
 | param | Qwen3.8-27B, Qwen3.8-Next-180B | Gemma-4-26B-A4B |
 |---|---|---|
 | `video_fps` | 1, 2, 4 (default), 8, 16 frames a second | - (frames are spread over the video) |
-| `video_max_frames` | 2 to 960, default 40 | 32 for now (up to 256 soon) |
-| `video_frame_tokens` | 256, 512 (default), 900 (a 720p frame pair in full) | 70 for now (140, 280 soon) |
+| `video_max_frames` | 2 to 960, default 40 | 1 to 256, default 32 |
+| `video_frame_tokens` | 256, 512 (default), 900 (a 720p frame pair in full) | 70 (default), 140, 280 |
 
 ```bash
 nextron-cloud jobs create --model qwen3.8-27b --dataset ds_... --param video_fps=8 --param video_max_frames=200
 ```
 
+- Gemma: at most 20,480 tokens a video (frames x (tokens a frame + 9)): 256 frames at 70, 137 at 140, 70 at 280.
+  Gemma RL runs keep the defaults (32 x 70).
 - More frames and tokens train more detail and cost more: a video's tokens are about its frames x its tokens a frame
   (Qwen: a pair of frames shares one grid). `jobs create` without `--yes` shows the settings (`video`) and the
   dataset's tokens at them.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc22
+
+- Guide: Gemma-4-26B-A4B jobs take `video_max_frames` 1 to 256 and `video_frame_tokens` 70, 140 or 280 (at most
+  20,480 tokens a video); its RL runs keep 32 x 70.
+
 ## 0.1.0rc21
 
 - Video settings: `video_fps`, `video_max_frames` and `video_frame_tokens` on jobs (`--param`) and RL runs
