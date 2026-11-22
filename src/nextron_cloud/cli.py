@@ -200,7 +200,7 @@ def _inference_start(client: NexTron, args: argparse.Namespace) -> Any:
         _print({"price": price, "estimate": estimate.model_dump(mode="json"), "created": False,
                 "next": "show the cost to the owner; rerun with --yes to start the inference run"})
         sys.exit(3)
-    return client.inference.start(job_id=args.job, max_hours=args.max_hours, idle_timeout=args.idle_timeout,
+    return client.inference.start(images=args.images, job_id=args.job, max_hours=args.max_hours, idle_timeout=args.idle_timeout,
                                   name=args.name, tags=args.tag)
 
 
@@ -402,6 +402,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--name", help="your label for the run")
     cmd.add_argument("--tag", action="append", help="a tag; repeat")
     cmd.add_argument("--yes", action="store_true", help="start the run; without it only the price is printed")
+    cmd.add_argument("--images", action="store_true", help="allow uploaded media in prompts")
     cmd.set_defaults(run=_inference_start)
     inference.add_parser("list").set_defaults(run=lambda c, a: c.inference.list())
     cmd = inference.add_parser("wait", help="until the model is loaded, about 8 minutes: progress on stderr, then the run")

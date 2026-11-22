@@ -26,10 +26,10 @@ class Inference:
             "/v1/inference/estimate", {"job_id": job_id, "max_hours": max_hours}, retry=True))
 
     def start(self, *, job_id: str, max_hours: float, idle_timeout: int | None = None, name: str | None = None,
-              tags: builtins.list[str] | None = None) -> InferenceRun:
+              tags: builtins.list[str] | None = None, images: bool = False) -> InferenceRun:
         """Serve the model of `job_id` (a training job that succeeded). The run stops itself after `max_hours`, or after
         `idle_timeout` seconds without a request (1800)."""
-        settings = {"idle_timeout": idle_timeout, "name": name, "tags": tags}
+        settings = {"images": images or None, "idle_timeout": idle_timeout, "name": name, "tags": tags}
         body = {"job_id": job_id, "max_hours": max_hours} | {k: v for k, v in settings.items() if v is not None}
         return InferenceRun.model_validate(self._client._post("/v1/inference", body))
 

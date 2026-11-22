@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0rc24
+
+- Hosted inference supports reusable media uploads with `images=True` and `live.add_images`.
+
 ## 0.1.0rc23
 
 - Guide: images and videos have their own page (`nextron-cloud guide media`): models, format, limits, how each video

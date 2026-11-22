@@ -210,7 +210,8 @@ class LiveRun:
         dataset = self._client.datasets.wait(dataset.id, timeout=timeout)
         if dataset.state != "ready":
             raise NexTronError("the images did not pass their check: " + "; ".join(dataset.errors))
-        self._client._post(f"/v1/training/sessions/{self.id}/images", {"dataset_id": dataset.id})
+        base = "/v1/training/sessions" if self._trains else "/v1/inference"
+        self._client._post(f"{base}/{self.id}/images", {"dataset_id": dataset.id})
         while self._call("POST", "/images/missing", {"sha256": missing})["missing"]:
             if time.monotonic() > deadline:
                 raise TimeoutError(f"the run still lacks images after {timeout} s")
