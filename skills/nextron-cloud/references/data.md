@@ -27,9 +27,7 @@ A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line
 - Roles are `system`, `user`, `assistant`. At most one system message, and only first.
 - At least one non-empty assistant message.
 - `content` is a string, or OpenAI content parts: `{"type": "text", "text": ...}`, and in user messages image and
-  video parts (see [Images and videos](#images-and-videos)).
-- Audio is refused, and so is an `image(s)` / `video(s)` / `audio(s)` field beside the messages. Images and videos go
-  inside user messages: see [Images and videos](#images-and-videos).
+  video parts ([media.md](media.md)). Audio is refused.
 
 These are converted to `messages` (by `to_messages` / `write_jsonl` locally, and by the server on upload):
 
@@ -47,10 +45,9 @@ write `"7"`).
 
 ## What training learns from
 
-Checked against the training template of Qwen3.8-27B; the other models follow the same rules.
+Checked against Qwen3.8-27B's training template; the other models follow the same rules. Whether a model has a
+thinking mode shows in its chat template (`chat_template.jinja` in a checkpoint): no `<think>` there, no think block.
 
-- These rules were checked against Qwen3.8-27B's template. Whether another model has a thinking mode shows in its
-  chat template (`chat_template.jinja` in a checkpoint): no `<think>` there, no think block.
 - **Every assistant message is trained**, in every turn of a multi-turn sample, including its end-of-turn token.
   System and user messages are context only.
 - **Reasoning:** jobs train in non-thinking mode. An assistant message without reasoning is trained as
@@ -144,63 +141,5 @@ datasets (`sample=True` in `datasets.list()`) can be trained on by every account
 
 ## Images and videos
 
-Qwen3.8-27B, Gemma-4-26B-A4B, Qwen3.8-Next-180B and Muse-Glimmer-30B train on images, and the first three on videos
-too (SFT, full-parameter or LoRA, and their long-context ids such as `qwen3.8-27b-256k`). Images and videos are opened
-organisation by organisation, each on its own: if `datasets upload` answers 403, images are not open to yours yet; a
-dataset whose videos are not open to yours ends `invalid` with "videos are not open to this organisation yet".
-`nextron-cloud models` lists `image` / `video` in a model's `input` only where they are open to you.
-
-```json
-{"messages": [{"role": "user", "content": [{"type": "image", "image": "photos/cat.jpg"}, {"type": "text", "text": "What is this?"}]},
-              {"role": "assistant", "content": "A cat."}]}
-{"messages": [{"role": "user", "content": [{"type": "video", "video": "clips/race.mp4"}, {"type": "text", "text": "Who wins?"}]},
-              {"role": "assistant", "content": "The red car."}]}
-```
-
-- An image is a file path relative to the JSONL file, or a base64 `data:` URI. OpenAI's
-  `{"type": "image_url", "image_url": {"url": ...}}` is read the same way. A video is a file path. A URL is not
-  fetched: download the file first.
-- Images: JPEG and PNG only, up to 20 MB and 36 million pixels each, no side over 200 times the other, at most 16 a
-  sample. Videos: MP4 only, up to 500 MB, 1 to 60 seconds and 3840 x 2160 a frame each, at most 4 a sample.
-  In user messages only.
-- Do not write `<image>`, `<video>` or `<audio>` in the text of such a dataset.
-- `datasets check` reads every image file's header and every video's MP4 boxes, as the server does on upload: type,
-  size, pixel count, length. The server then decodes each file; one whose data is broken behind a good header makes
-  the dataset `invalid` there.
-- `datasets prepare` and `write_jsonl` keep a sample with images or videos as it is (`prepare` rewrites their paths
-  for its output folder).
-- `datasets upload` packs the samples and the image and video files into one upload
-  (each file once, up to 20 GB together). Nothing else changes: `wait`, then train.
-- An image counts as tokens, and is billed as them: up to 514 on Qwen3.8-27B (a 32-pixel square each, so a small image
-  costs less), about 260-282 on Gemma-4-26B-A4B whatever its size. A video counts as the tokens of the frames
-  training reads (see below). `tokens` on the dataset includes them per model.
-- A sample with images or videos is never cut: a job is refused if the dataset's longest sample is over `max_seq_len`.
-- Training reads a copy of each image: 8-bit RGB, transparency on white, turned as its EXIF says, and scaled down
-  only above 1.6 million pixels. Each video is re-encoded as H.264 at up to 16 frames a second and up to 1280 x 720,
-  with at least 32 frames; its audio is dropped.
-- Not with images or videos yet: validation sets and DPO. A sample with images or videos must fit one GPU's row (128K
-  tokens on Qwen3.8-27B, 64K on the others), also on a long-context id; text samples beside it may be longer.
-
-### Video settings
-
-A job (`--param`) or an RL run (`rl.start(...)`, `rl start --video-...`) chooses how its videos are sampled:
-
-| param | Qwen3.8-27B, Qwen3.8-Next-180B | Gemma-4-26B-A4B |
-|---|---|---|
-| `video_fps` | 1, 2, 4 (default), 8, 16 frames a second | - (frames are spread over the video) |
-| `video_max_frames` | 2 to 960, default 40 | 1 to 256, default 32 |
-| `video_frame_tokens` | 256, 512 (default), 900 (a 720p frame pair in full) | 70 (default), 140, 280 |
-
-```bash
-nextron-cloud jobs create --model qwen3.8-27b --dataset ds_... --param video_fps=8 --param video_max_frames=200
-```
-
-- Gemma: at most 20,480 tokens a video (frames x (tokens a frame + 9)): 256 frames at 70, 137 at 140, 70 at 280.
-  Gemma RL runs keep the defaults (32 x 70).
-- More frames and tokens train more detail and cost more: a video's tokens are about its frames x its tokens a frame
-  (Qwen: a pair of frames shares one grid). `jobs create` without `--yes` shows the settings (`video`) and the
-  dataset's tokens at them.
-- A choice the model does not take, or a video over the row at the chosen settings, is refused with what fits.
-- Gemma will take at most 20,480 tokens a video (256 frames at 70, about 70 at 280). Its RL runs and RFT keep 32
-  frames at 70 tokens.
-  Serverless RL takes them in its prompts: see serverless-rl.md.
+Samples may hold images and videos on some models: the format, limits, video settings and their cost are in
+[media.md](media.md).

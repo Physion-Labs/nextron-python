@@ -32,6 +32,7 @@ from nextron_cloud import NexTron
 
 client = NexTron()
 dataset = client.datasets.wait(client.datasets.upload("train.jsonl").id)   # checked locally, then by the server
+# no data yet? a sample dataset: next(d for d in client.datasets.list() if d.sample and not d.validation)
 draft = dict(model="qwen3.8-27b", dataset_id=dataset.id, params={"train_type": "lora", "learning_rate": 1e-4})
 print(client.jobs.estimate(**draft))                                        # cost in US cents: get a yes first
 
@@ -92,6 +93,7 @@ The guide is written for people and coding agents alike, in [skills/nextron-clou
 
 - [SKILL.md](skills/nextron-cloud/SKILL.md): setup, rules, an experiment end to end
 - [data.md](skills/nextron-cloud/references/data.md): the sample format, what training learns from, checks
+- [media.md](skills/nextron-cloud/references/media.md): images and videos: models, format, video settings, cost
 - [training.md](skills/nextron-cloud/references/training.md): models, params, batch, cost and time, sweeps
 - [monitoring.md](skills/nextron-cloud/references/monitoring.md): states, metrics, failures, API errors
 - [rl.md](skills/nextron-cloud/references/rl.md): reinforcement fine-tuning (RFT, a GRPO job) with built-in rewards

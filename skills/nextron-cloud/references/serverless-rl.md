@@ -152,35 +152,29 @@ ids and paths (`nx-...`, `tinker://nx-.../weights/final`); they are not argument
 
 ### Prompts with images and videos
 
-Qwen3.8-27B, Gemma-4-26B-A4B, Qwen3.8-Next-180B and Muse-Glimmer-30B take images in a run's prompts (the models whose
-`input` lists `image`; images and videos are opened organisation by organisation, as for datasets). Start the run with
-`images=True` (`nextron-cloud rl start ... --images`), and write an image as a
-content part of a user message, as in a dataset:
+The models whose `input` lists `image` (or `video`) take them in a run's prompts; [media.md](media.md) has the
+models, the format and the limits. Start the run with `images=True` (`nextron-cloud rl start ... --images`) and write
+an image or a video as a content part of a user message, as in a dataset:
 
 ```python
 run = client.rl.start(model="qwen3.8-27b", max_hours=1, images=True)
 ...
 with client.rl.connect(run.id) as live:
-    live.add_images(paths)                 # once, before the loop: every image file the prompts will use
+    live.add_images(paths)                 # once, before the loop: every image and MP4 file the prompts will use
     prompt = [{"role": "user", "content": [{"type": "image", "image": "charts/q3.png"},
                                            {"type": "text", "text": "What was revenue in Q3?"}]}]
     batch = live.sample([prompt], n=8, max_tokens=64)
 ```
 
-- An image is a JPEG or PNG file path, or a base64 `data:` URI; the limits are a dataset's (20 MB, 36 million
-  pixels, 16 a prompt). A URL is not fetched.
-- Videos work the same way on the models whose `input` lists `video`: `{"type": "video", "video": "clips/race.mp4"}`,
-  an MP4 file path, with a dataset's limits (500 MB, 1 second to 10 minutes, 4 a prompt). `add_images` takes video
-  files too: a path ending in `.mp4` is sent as a video.
-- The run must have an image before a prompt uses it. `add_images` uploads the files it lacks as one dataset,
-  the server checks and decodes them, and the run fetches them: a minute or two, more for thousands. `sample`
-  does the same for images it has not seen, so a loop that adds new images every round waits every round: send
-  the whole set first.
+- `add_images` takes image files and MP4 videos (a path ending in `.mp4` is sent as a video). The run must have a
+  file before a prompt uses it: `add_images` uploads the files it lacks as one dataset, the server checks and decodes
+  them, and the run fetches them, a minute or two (more for thousands). `sample` does the same for files it has not
+  seen, so a loop that adds new ones every round waits every round: send the whole set first.
 - Each upload is a dataset of the organisation (named `images of rl_...`, kind `images`); delete it when the run is
-  over. A dataset with images that is already uploaded can be given to a run without a new upload:
+  over. An uploaded dataset with images can be given to a run without a new upload:
   `POST /v1/training/sessions/{id}/images {"dataset_id": ...}`, then name its images `sha256:<hex>`.
-- An image counts as tokens of the run's context: up to 514 on Qwen3.8-27B, about 260-282 on Gemma-4-26B-A4B. A run
-  is billed by time, so images cost what they add to sampling and training time.
+- Images and videos count as tokens of the run's context (media.md); a run is billed by time, so they cost what they
+  add to sampling and training time. Videos are sampled by the run's video settings (`rl.start(video_fps=...)`).
 - Not with images or videos: tools in the same prompt, and Tinker's API (`rl.connect` only).
 
 When an RL run that trained at least one step stops, the model is saved and uploaded like a job's checkpoint. The

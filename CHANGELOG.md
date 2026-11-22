@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0rc23
+
+- Guide: images and videos have their own page (`nextron-cloud guide media`): models, format, limits, how each video
+  setting samples frames, tokens and cost, converting with ffmpeg, an end-to-end example, and serving a video model
+  with the frames it trained on. Videos in Serverless RL prompts are 1 to 60 seconds (not 10 minutes).
+- `jobs.estimate` returns `video`: the video settings the job would train with.
+- Guide: shorter cost section in training.md; repeated sentences removed.
+
 ## 0.1.0rc22
 
 - Guide: Gemma-4-26B-A4B jobs take `video_max_frames` 1 to 256 and `video_frame_tokens` 70, 140 or 280 (at most

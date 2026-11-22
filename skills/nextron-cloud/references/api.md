@@ -34,7 +34,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 
 | call | does |
 |---|---|
-| `jobs.estimate(model, dataset_id, layout="auto", params=None)` | `Estimate`: `tokens`, `price_per_mtok`, `credits` (held, US cents), `balance`, `enough`, `metered`, `params`, `steps`, `truncated_samples`, `warnings`; raises `APIError` 422 when the job would be refused |
+| `jobs.estimate(model, dataset_id, layout="auto", params=None)` | `Estimate`: `tokens`, `price_per_mtok`, `credits` (held, US cents), `balance`, `enough`, `metered`, `params`, `steps`, `truncated_samples`, `warnings`, `video` (the video settings, for a dataset with videos); raises `APIError` 422 when the job would be refused |
 | `jobs.progress(id)` | `Progress`: `phase`, `jobs_ahead`, `training`, `checkpoint`, `timeline`, `last_activity`, `idle_seconds` (monitoring.md) |
 | `jobs.events(id, after=0, follow=False, until="training")` | iterator of `Event` (`seq`, `ts`, `type`, `data`) |
 | `jobs.billing(id)` | `Billing`: `billing` (`held`/`settled`/`released`/`not_metered`), `held_credits`, `charged_credits`, `settled_at`; a training job has `price_per_mtok` and `tokens_charged`, an RL or inference run (billed by time; pass its `rl_...` / `inf_...` id) `price_per_hour` and `seconds_charged` |
@@ -75,7 +75,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | does |
 |---|---|
 | `rl.estimate(model, max_hours)` | `RLEstimate`: `price_per_gpu_hour`, `gpus`, `price_per_hour` (the two multiplied), `credits` (held for `max_hours`), `balance`, `enough`; US cents |
-| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, grad_clip=None, idle_timeout=None, images=False, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL |
+| `rl.start(model, max_hours, max_context=None, max_grad_norm=None, grad_clip=None, idle_timeout=None, images=False, video_fps=None, video_max_frames=None, video_frame_tokens=None, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL. Video settings: media.md |
 | `rl.connect(id, log_dir=None, log_groups=4)` | `LiveRun` on a ready run (context manager; keeps the run alive while open). `log_dir`: `metrics.jsonl` and `rollouts.jsonl` (the first `log_groups` groups of every step) are written there |
 | `live.sample(prompts, n=1, max_tokens=None, temperature=1.0, top_p=1.0, top_k=-1, stop=None, timeout=None)` | `SampleBatch`: `batch[i][j]` is a `Sample` (`id`, `text`, `finish_reason`, `tokens`); `generate_seconds`, `seconds`. `prompts` is a list, also for one prompt; a prompt is a string, a list of messages, or `{"messages", "tools"}` / `{"tokens"}`. `n` above 1 needs a `temperature` above 0 |
 | `live.add_images(images, timeout=1800)` | sends the image files (paths or `data:` URIs) and MP4 video files (paths ending in `.mp4`) the run lacks and waits until it has them; a run started with `images=True` |
@@ -119,6 +119,7 @@ nextron-cloud jobs events ID [--after SEQ] [--follow] [--until training|checkpoi
 nextron-cloud jobs serve-rewards ID FILE.py:FUNCTION     # remote-reward GRPO: score until training is over
 nextron-cloud jobs wait-checkpoint ID | checkpoint ID | download ID DEST [--include GLOB ...] | export ID DEST
 nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-norm G] [--no-grad-clip] [--idle-timeout S] [--images]
+                       [--video-fps F] [--video-max-frames N] [--video-frame-tokens T]
                        [--name N] [--tag T ...] [--yes]
 nextron-cloud rl list | get ID | wait ID [--timeout S] | env ID | stop ID [--wait]   # env: shell lines for eval, without the key
 nextron-cloud rl metrics ID | rollouts ID [--step N]

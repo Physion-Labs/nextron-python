@@ -15,7 +15,8 @@ NexCloud trains open models on its own H100s, in two modes:
   or the `tinker` SDK and tinker-cookbook unchanged); NexCloud runs each sample and each optimizer step. For custom
   RL environments, tools and rewards. Billed by time.
 
-Nothing heavy runs on the user's machine in either mode. Text, and images and videos for SFT on a few models (references/data.md).
+Nothing heavy runs on the user's machine in either mode. Text everywhere; images and videos on a few models
+([references/media.md](references/media.md)).
 
 Everything below works from Python (`from nextron_cloud import NexTron`) or the shell (`nextron-cloud ...`, every
 command prints JSON). Read the reference for each step when you reach it (`nextron-cloud guide <topic>` prints it,
@@ -25,6 +26,7 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 |---|---|
 | choose a model, settings, cost and time; run a sweep | [references/training.md](references/training.md) |
 | build, convert and check data; what is trained on | [references/data.md](references/data.md) |
+| images and videos: models, format, video settings, cost | [references/media.md](references/media.md) |
 | watch a job, read its metrics, fix a failure | [references/monitoring.md](references/monitoring.md) |
 | download, serve and evaluate the checkpoint | [references/checkpoints.md](references/checkpoints.md) |
 | reinforcement fine-tuning (RFT, a GRPO job): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
@@ -69,8 +71,8 @@ https://nextron.physionlabs.ai, opens **API keys** (only an organisation owner c
    then. The checkpoint uploads afterwards (minutes to an hour by model size) and stays downloadable for 30 days:
    `jobs.wait_checkpoint` / `download_checkpoint` only when the owner needs the weights.
 7. **Poll slowly** (jobs every 30 s or more) and do not leave a job unwatched without telling the owner its id.
-8. Images (JPEG, PNG) and videos (MP4) train with SFT on the models listed in references/data.md, for organisations
-   they are opened to; audio is refused.
+8. Images (JPEG, PNG) and videos (MP4) train on the models listed in references/media.md, for organisations they
+   are opened to; audio is refused.
 
 ## An experiment, end to end
 

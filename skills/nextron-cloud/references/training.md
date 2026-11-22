@@ -19,8 +19,9 @@ Longer-context versions are separate ids (for example `...-256k`) with their own
 - **full**: every weight trained; FP32 master weights, gradients and AdamW states, BF16 compute.
 - **lora**: rank 32, alpha 64, on every linear layer of the language model (routed MoE experts excluded); base
   weights frozen. The adapters are **merged** into the checkpoint, so it is a full model like a full fine-tune.
-  Every model but `kimi-k3.1-pro` and the long-context ids (`...-256k`, `...-1m`) has it (a model's `methods` say so), and the larger models train LoRA on fewer
-  GPUs than a full fine-tune: with `layout="auto"` the job takes the smallest setup that trains it.
+  Every model but `kimi-k3.1-pro` and the long-context ids (`...-256k`, `...-1m`) has it (a model's `methods` say
+  so). The larger models train LoRA on fewer GPUs than a full fine-tune: with `layout="auto"` the job takes the
+  smallest setup that trains it.
 
 ## Params
 
@@ -61,8 +62,8 @@ under one step at the default batch and 17 steps at the smallest allowed `batch_
 
 ### Small datasets
 
-A dataset under one step's tokens (about 470K on 8 GPUs, 1M on the 128K models; for example a few thousand short support conversations)
-trains **one step per epoch**, and `batch_size` cannot help when the minimum batch is larger than the dataset. Then:
+A dataset under one step's tokens (see above; for example a few thousand short support conversations) trains
+**one step per epoch**, and `batch_size` cannot help when the minimum batch is larger than the dataset. Then:
 
 - `num_train_epochs` (up to 20) is then the number of optimizer steps. Sweep it (for example 3 / 6 / 10) and pick by
   `val_loss`; with so few steps, warmup and the schedule hardly matter.
@@ -71,20 +72,22 @@ trains **one step per epoch**, and `batch_size` cannot help when the minimum bat
 
 ## Cost and time
 
-- `jobs.estimate` returns what is **held** from the balance: estimated tokens × price. With `layout="auto"` and
-  `max_steps`, it holds for the largest GPU setup the model may get. When the job ends it is charged for the tokens it
-  actually trained and the rest is released. **Every token of every sample is billed**: system, user and assistant
-  messages plus the chat template's few tokens per message, not only the assistant tokens the loss is computed on.
-  So `job.tokens_trained` is a little above `dataset.tokens[model].total` × epochs, and the charge a little above the
-  estimate. Charges are rounded up to whole cents. The estimate uses the dataset's largest token count over all
-  models (`est_tokens`), so for a model with a more compact tokenizer the charge can also come out below it. **A failed job is free**; a cancelled one pays for the tokens trained before it stopped. Validation
-  passes are not charged.
-- A GPU setup picked by hand raises the price per token by 5% for each size above the model's smallest setup (Qwen on
-  16 GPUs: 1.05×, 32 GPUs: 1.10×); `auto` never does.
+- `jobs.estimate` returns what is **held** from the balance: estimated tokens × price. When the job ends it is charged
+  for the tokens it actually trained, rounded up to whole cents, and the rest is released.
+- **Every token of every sample is billed**: system, user and assistant messages plus the chat template's few tokens
+  per message, not only the assistant tokens the loss is computed on. So `job.tokens_trained` is a little above
+  `dataset.tokens[model].total` × epochs.
+- The estimate counts with the largest token count over all models (`est_tokens`), so the charge can come out a little
+  above or below it.
+- With `layout="auto"` and `max_steps`, the hold is for the largest GPU setup the model may get. A setup picked by hand
+  raises the price per token by 5% for each size above the model's smallest (Qwen on 16 GPUs: 1.05×, 32: 1.10×);
+  `auto` never does.
+- **A failed job is free**; a cancelled one pays for the tokens trained before it stopped. Validation passes are not
+  charged. `metered: false` means the model has no price: the job is free.
 - `estimate` runs the same checks as `create` and raises `APIError` (422) with the reason when the job would be
   refused. Otherwise it also returns `params` (the settings it would run with), `steps` (about how many optimizer
   steps; None for the large models with a tuned pack), `truncated_samples` and `warnings` (`FEW_STEPS`,
-  `SAMPLES_TRUNCATED`). `metered: false` means the model has no price: the job is free.
+  `SAMPLES_TRUNCATED`).
 - After a job ends, `jobs.billing(job_id)` gives what it held and was charged (`charged_credits`, US cents).
 - Training time ≈ tokens / (`tokens_per_s_per_gpu` × GPUs), plus fixed time around it (medians of past jobs):
 
@@ -103,7 +106,7 @@ trains **one step per epoch**, and `batch_size` cannot help when the minimum bat
 - **Smoke run first** on new data or a new model, when the data is larger than a few steps: `max_steps: 3`, an
   explicit `layout` (the smallest in `methods[...].layouts`, so the estimate is not held for a larger setup) and,
   where the model takes one, the smallest `batch_size` (a too-small one gets a 422 naming the minimum). A default step
-  is large (about 470K tokens on 8 GPUs, 1M for `qwen3.8-27b` and `gemma-4-26b-a4b`), so 3 default steps can cost half an epoch. Every
+  is large (see Batch and steps), so 3 default steps can cost half an epoch. Every
   succeeded job also uploads a full checkpoint (tens of GB), smoke runs included. Its loss should be finite and in a normal range
   (about 0.3-3 for chat data). For small datasets see above: the real run is already small.
 - **One change at a time** between runs; same data, same seed.

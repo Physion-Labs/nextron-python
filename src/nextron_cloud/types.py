@@ -139,6 +139,7 @@ class Estimate(_Model):
     params: dict[str, Any] | None = None  # the settings it would run with
     warnings: list[dict[str, str]] = []  # {"code", "text"}, e.g. FEW_STEPS, SAMPLES_TRUNCATED
     truncated_samples: int | None = None
+    video: dict[str, Any] | None = None  # the video settings it would train with, for a dataset with videos
 
 
 class RLRun(_Model):
