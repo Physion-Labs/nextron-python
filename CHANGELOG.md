@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0rc26
+
+- Training settings: `max_grad_norm` (0 = no clipping), `adam_beta1`, `adam_beta2`, `adam_epsilon`, `tokens_per_gpu`,
+  `gradient_accumulation_steps`, and for LoRA `lora_rank`, `lora_alpha`, `lora_dropout` (training.md).
+  `client.models()` shows each method's `defaults` and `max_tokens_per_gpu`.
+- Guide: a full HTTP API reference (`nextron-cloud guide http-api`): every endpoint, field and setting.
+
 ## 0.1.0rc25
 
 - Media guide: hosted Qwen and Gemma video settings and verified evaluation results.

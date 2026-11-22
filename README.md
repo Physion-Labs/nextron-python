@@ -103,6 +103,7 @@ The guide is written for people and coding agents alike, in [skills/nextron-clou
   and `train`, or the `tinker` SDK and tinker-cookbook, on NexCloud's GPUs
 - [inference.md](skills/nextron-cloud/references/inference.md): an inference run: try a trained model without downloading it
 - [api.md](skills/nextron-cloud/references/api.md): every SDK call and CLI command
+- [http-api.md](skills/nextron-cloud/references/http-api.md): the HTTP API itself: every endpoint, field and setting
 - [examples/compare_outputs.py](examples/compare_outputs.py): answer held-out prompts with the fine-tuned and the base
   model side by side
 

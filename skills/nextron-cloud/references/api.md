@@ -15,7 +15,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | returns |
 |---|---|
 | `client.me()` | `org` (`id`, `name`, `role`, `credits`: the balance in US cents), `orgs` (every organisation of the login; no balance), `billing` (`prices`: `{model: {method: cents_per_million_tokens}}`, possibly including retired models; `checkout`, `min_cents`, `max_cents`: website top-ups) |
-| `client.models()` | `list[ModelInfo]`, live: `id`, `name`, `methods` (`max_seq_len`, `layouts`, `price_per_mtok`), `layouts` (`gpus`, `tokens_per_s_per_gpu`, `available`, `queued`), `batch_size`, `validation_set` |
+| `client.models()` | `list[ModelInfo]`, live: `id`, `name`, `methods` (`max_seq_len`, `layouts`, `price_per_mtok`, `defaults`, `max_tokens_per_gpu`), `layouts` (`gpus`, `tokens_per_s_per_gpu`, `available`, `queued`), `batch_size`, `validation_set` |
 | `client.layouts()` | every GPU setup: `id`, `name`, `nodes`, `gpus`, `models`, `tokens_per_s` (per GPU, per model), `available`, `queued`, `coming_soon`. Prefer `models()`, which gives the same per model and method |
 
 ## Datasets

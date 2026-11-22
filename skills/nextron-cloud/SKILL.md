@@ -34,6 +34,7 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 | Serverless RL: your own RL loop (this SDK's `sample` / `train`, or the tinker SDK) on NexCloud's GPUs, billed by time | [references/serverless-rl.md](references/serverless-rl.md) |
 | try a trained model right after training, without downloading it: an inference run, called with this SDK or an OpenAI client | [references/inference.md](references/inference.md) |
 | every SDK call and CLI command | [references/api.md](references/api.md) |
+| the HTTP API itself: every endpoint, field and setting | [references/http-api.md](references/http-api.md) |
 
 ## Setup
 

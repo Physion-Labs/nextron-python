@@ -9,6 +9,9 @@
 - `layouts[id]`: `gpus`, `tokens_per_s_per_gpu`, `available` (a job would start now), `queued` (jobs ahead).
 - `batch_size` / `validation_set`: whether `params.batch_size` / `params.val_dataset_id` are accepted. Large
   expert-parallel models set their own batch and take no validation set.
+- `methods[m].defaults`: the optimizer and step settings a job trains with unless it sets them (`max_grad_norm`, 0 = no
+  clipping; `adam_beta1`, `adam_beta2`, `adam_epsilon`; for LoRA `lora_rank`, `lora_alpha`, `lora_dropout`), and
+  `methods[m].max_tokens_per_gpu`: the largest `tokens_per_gpu` (null where the model trains with its tuned step).
 - `name`, `maker`, `params`, `active_params`, `architecture`.
 
 Pick by: the method you need, a `max_seq_len` that holds the data (`dataset.tokens[model].max`), price, and queue.
@@ -41,12 +44,22 @@ All optional; the server fills the rest from a tested recipe for the model.
 | `val_dataset_id` | | a ready dataset of at most 5,000 samples; its loss is reported as `val_loss` |
 | `eval_steps` | ~10 evaluations a run | steps between validation passes (at least 1: a 3-step run validates every step) |
 | `seed` | 42 | |
+| `max_grad_norm` | the model's (`defaults`) | 0 (no clipping) to 1e6. Most models train without clipping by default; 1.0 costs about 1% of the speed |
+| `adam_beta1`, `adam_beta2`, `adam_epsilon` | the model's (0.9, 0.999, 1e-8 unless it sets them) | betas 0 to < 1, epsilon up to 1e-3 |
+| `tokens_per_gpu` | the model's `max_tokens_per_gpu` | each GPU's packed row a micro-step: 8,192 up to `max_tokens_per_gpu`, and at least the dataset's longest sample. Not with `batch_size` |
+| `gradient_accumulation_steps` | 1 | 1-64 micro-steps an optimizer step. Not with `batch_size` |
+| `lora_rank`, `lora_alpha`, `lora_dropout` | 32, 64, the model's | LoRA only: rank 1-128, alpha 1-512, dropout 0-0.5 |
 | `engine_debug_log` | false | also log the engine's setup details (kernels, memory layout, packing); for debugging |
 
 `wandb={"api_key": ..., "project": ..., "entity": ..., "run_name": ...}` also logs to the owner's Weights & Biases
 (the key is stored encrypted and never returned).
 
 ## Batch and steps
+
+A step's size is set one of three ways: by default (each GPU packs `max_tokens_per_gpu` tokens, below); by
+`batch_size` (samples a step); or by `tokens_per_gpu` with `gradient_accumulation_steps` (a step is about
+`gpus x tokens_per_gpu x gradient_accumulation_steps` tokens, in whole samples). The last works where
+`max_tokens_per_gpu` is set, including models without `batch_size`; the estimate's `steps` shows what it gives.
 
 Without `batch_size`, each GPU packs about 64K tokens a step (128K for `qwen3.8-27b` and `gemma-4-26b-a4b`), so a step
 on 8 GPUs trains roughly 470K tokens (about 1M on those two), whatever the sample lengths. Steps per epoch ≈ dataset

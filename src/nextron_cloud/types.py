@@ -48,6 +48,8 @@ class ModelMethod(_Model):
     layouts: list[str]  # the GPU setups it trains on, in the order `layout="auto"` tries them
     price_per_mtok: int | None = None  # US cents per million tokens trained; None: not charged
     price_per_gpu_hour: int | None = None  # the interactive method (Serverless RL): US cents per GPU-hour
+    defaults: dict[str, float] | None = None  # optimizer and step settings a job trains with unless it sets them
+    max_tokens_per_gpu: int | None = None  # the largest params.tokens_per_gpu; None: the model's tuned step only
 
 
 class ModelLayout(_Model):
