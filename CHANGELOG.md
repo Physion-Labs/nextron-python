@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0rc25
+
+- Media guide: hosted Qwen and Gemma video settings and verified evaluation results.
+
 ## 0.1.0rc24
 
 - Hosted inference supports reusable media uploads with `images=True` and `live.add_images`.

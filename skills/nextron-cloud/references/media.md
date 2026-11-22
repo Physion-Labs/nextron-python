@@ -104,8 +104,19 @@ per million tokens (take the price from `nextron-cloud models`).
 
 ## Serve the trained model
 
-Serve a video model with the same frame sampling it trained with; otherwise it sees videos differently from training.
-Start a hosted inference run from the completed job and wait until it is ready. At its OpenAI base URL, send an MP4 as a user content part with `type: video_url` and `video_url.url` set to a `data:video/mp4;base64,...` URI, followed by your text question. Stop the inference run after evaluating it. The 8-frame Gemma checkpoint was tested with this path. Matching the training and serving frame selection for other settings requires a separate check.
+Start a hosted inference run from the completed job and wait until it is ready. At its OpenAI base URL, send
+an MP4 as a user content part with `type: video_url` and `video_url.url` set to a `data:video/mp4;base64,...` URI,
+followed by the text question. Stop the run after evaluation.
+
+On `qwen3.8-27b`, the inference agent reads the saved training configuration. Its video decoder uses the training
+frame rate, frame cap and pixel limits. In the bounce-counting recipe, a 20-clip comparison matched the training
+reference's frame indices, preprocessed pixels and rendered evaluation prompt tokens on every clip. The hosted
+checkpoint answered all 100 held-out videos exactly, with the same prompt-token count as the offline evaluation on
+each video.
+
+Gemma checkpoints trained with `video_max_frames=8` and `128` both served short MP4s. The 128-frame checkpoint
+answered a 32-frame clip and twelve 24-frame clips correctly in the moving-disk test. Hosted responses expose
+prompt token usage but do not report the internal frame indices.
 
 For reusable files, start the inference run with `images=True` (CLI: `--images`). Once ready, call
 `client.inference.connect(run.id)` as a context manager and pass a list of prompts to `live.sample`.
