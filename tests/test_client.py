@@ -164,6 +164,13 @@ def test_a_run_that_saved_no_checkpoint_ends_the_wait_for_one(make_client):
     assert list(client.jobs.events("rl_1", follow=True, until="checkpoint")) == []
 
 
+def test_a_deleted_checkpoint_ends_the_wait_for_one(make_client):
+    deleted = JOB | {"state": "succeeded", "checkpoint": {"status": "deleted"}}
+    client = make_client(lambda request: httpx.Response(200, json=deleted))
+    with pytest.raises(NexTronError, match="was deleted"):
+        client.jobs.wait_checkpoint("job_1", poll_interval=0)
+
+
 def test_a_wait_runs_for_its_whole_timeout_before_it_gives_up(make_client):
     answers = [JOB | {"state": "running"}, JOB | {"state": "succeeded"}]
     client = make_client(lambda request: httpx.Response(200, json=answers.pop(0)))

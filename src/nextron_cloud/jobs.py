@@ -74,6 +74,8 @@ class Jobs:
         job = poll(lambda: self.get(job_id), _checkpoint_settled, timeout, poll_interval)
         if job.state != "succeeded":
             raise NexTronError(f"{job_id} {job.state}; only a succeeded job has a checkpoint")
+        if (job.checkpoint or {}).get("status") == "deleted":
+            raise NexTronError(f"{job_id}'s checkpoint was deleted before it was uploaded")
         if not job.checkpoint_ready:
             raise NexTronError(f"{job_id} saved no checkpoint: an RL run that trained no step has none")
         return job
@@ -194,9 +196,10 @@ class Jobs:
 
 
 def _checkpoint_settled(job: Job) -> bool:
-    """The checkpoint is uploaded, or none will come: the job did not succeed, or it succeeded and saved none (an RL
-    run that trained no step)."""
-    return job.checkpoint_ready or (job.done and (job.state != "succeeded" or job.checkpoint is None))
+    """The checkpoint is uploaded, or none will come: the job did not succeed, it succeeded and saved none (an RL
+    run that trained no step), or its checkpoint was deleted before the upload."""
+    deleted = (job.checkpoint or {}).get("status") == "deleted"
+    return job.checkpoint_ready or (job.done and (job.state != "succeeded" or job.checkpoint is None or deleted))
 
 
 def _draft(model: str, dataset_id: str, layout: str, params: TrainingParams | None) -> dict[str, Any]:

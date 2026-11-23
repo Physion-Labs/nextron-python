@@ -170,8 +170,8 @@ with client.rl.connect(run.id) as live:
   file before a prompt uses it: `add_images` uploads the files it lacks as one dataset, the server checks and decodes
   them, and the run fetches them, a minute or two (more for thousands). `sample` does the same for files it has not
   seen, so a loop that adds new ones every round waits every round: send the whole set first.
-- Each upload is a dataset of the organisation (named `images of rl_...`, kind `images`); delete it when the run is
-  over. An uploaded dataset with images can be given to a run without a new upload:
+- Each upload is a dataset of the organisation (named `images of rl_...`, kind `images`), deleted once the run has
+  ended. An uploaded dataset with images can be given to a run without a new upload:
   `POST /v1/training/sessions/{id}/images {"dataset_id": ...}`, then name its images `sha256:<hex>`.
 - Images and videos count as tokens of the run's context (media.md); a run is billed by time, so they cost what they
   add to sampling and training time. Videos are sampled by the run's video settings (`rl.start(video_fps=...)`).

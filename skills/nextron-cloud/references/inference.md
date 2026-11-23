@@ -68,4 +68,4 @@ client.inference.stop(run.id)
 ```
 
 Reuse `media` for every run of the same set. Without it, each run uploads its files as a dataset of its own
-(`images of inf_...`); every dataset counts toward the 50 an account keeps, so delete those after the run stops.
+(`images of inf_...`), deleted once the run has ended; it counts toward the 50 datasets an account keeps meanwhile.
