@@ -24,7 +24,7 @@ A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line
 {"messages": [{"role": "system", "content": "You are terse."}, {"role": "user", "content": "2+2?"}, {"role": "assistant", "content": "4"}]}
 ```
 
-- Roles are `system`, `user`, `assistant`. At most one system message, and only first.
+- Roles are `system`, `user`, `assistant`, and `tool` with tool calls (below). At most one system message, and only first.
 - At least one non-empty assistant message.
 - `content` is a string, or OpenAI content parts: `{"type": "text", "text": ...}`, and in user messages image and
   video parts ([media.md](media.md)). Audio is refused.

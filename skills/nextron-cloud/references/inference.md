@@ -48,3 +48,24 @@ reply = llm.chat.completions.create(model="any", messages=[{"role": "user", "con
   instead (it polls, so it has no such limit).
 
 The models that can be served list `inference` in `client.models()[i].methods`.
+
+## Images and videos
+
+A job trained on images or videos is served with them when the run starts with `images=True` (CLI `--images`):
+prompts then hold image and video parts as in media.md ("Serve the trained model"). Videos are read with the frame
+settings the job trained with. A prompt's images and videos count toward the run's context (`max_seq_len` of the
+`inference` method). 
+The run is billed from ready, and files it has not seen are uploaded and checked first, which can take minutes. For
+an evaluation set, check the files before the run starts and give them to it:
+
+```python
+media = client.datasets.upload_images(paths)                 # checked now, before any run is billed
+run = client.inference.wait(client.inference.start(job_id="job_...", max_hours=1, images=True).id)
+with client.inference.connect(run.id) as live:
+    live.add_images(paths, dataset_id=media.id)                 # the run takes the checked files: seconds
+    batch = live.sample(prompts, max_tokens=64, temperature=0)  # prompts name the same paths
+client.inference.stop(run.id)
+```
+
+Reuse `media` for every run of the same set. Without it, each run uploads its files as a dataset of its own
+(`images of inf_...`); every dataset counts toward the 50 an account keeps, so delete those after the run stops.

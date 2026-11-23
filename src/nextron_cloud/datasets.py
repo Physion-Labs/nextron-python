@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 import os
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from ._client import NexTronError, poll
-from .data import check_file, write_bundle
+from .data import check_file, read_media, write_bundle
 from .types import Dataset
 
 if TYPE_CHECKING:
@@ -48,6 +50,25 @@ class Datasets:
             if images:
                 images = write_bundle(path, bundle) > 0
             return self._send(bundle if images else path, name or path.name, images)
+
+    def upload_images(self, images: Sequence[str | os.PathLike[str]], *, name: str = "images", timeout: float = 3600) -> Dataset:
+        """Image files (JPEG, PNG) and MP4 videos as one dataset for an inference or RL run's prompts, checked by the
+        server before any run is billed: give it to the run with `live.add_images(paths, dataset_id=...)`. Returns
+        when the check is done."""
+        from .live import write_media_tar
+
+        sources = {}
+        for image in images:
+            kind = "video" if str(image).lower().endswith(".mp4") else "image"
+            sources[hashlib.sha256(read_media(kind, str(image), Path.cwd())[1]).hexdigest()] = (kind, str(image))
+        with tempfile.TemporaryDirectory() as work:
+            bundle = Path(work) / "images.tar"
+            write_media_tar(sources, bundle)
+            dataset = self._send(bundle, name, True)
+        dataset = self.wait(dataset.id, timeout=timeout)
+        if dataset.state != "ready":
+            raise NexTronError("the images did not pass their check: " + "; ".join(dataset.errors))
+        return dataset
 
     def _send(self, file: Path, name: str, images: bool) -> Dataset:
         """Upload a JSONL file, or with `images` a bundle (a tar of image and video files, with or without samples)."""

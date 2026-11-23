@@ -3,6 +3,7 @@
 | model | images | videos |
 |---|---|---|
 | `qwen3.8-27b`, `qwen3.8-next-180b` (Qwen3.8-Flash-Next), `gemma-4-26b-a4b`, and their `...-256k` ids | yes | yes |
+| `qwen3.5-4b`, `qwen3.5-9b`, `qwen3.5-9b-base`, `qwen3.6-35b-a3b`, `qwen3.5-35b-a3b-base` | yes | yes |
 | `muse-glimmer-30b` | yes | not yet |
 
 They train with SFT (full or LoRA) and RFT, and go in Serverless RL prompts (serverless-rl.md). Not yet: DPO and
@@ -84,6 +85,9 @@ A job (`--param`) or an RL run (`rl.start(...)`) chooses how its videos are samp
 - Fast motion: raise `video_fps`. Long videos: raise `video_max_frames` so the frames stay close together. Small text
   or detail in the picture: raise `video_frame_tokens`. Each costs tokens.
 - A choice the model does not take, or a video that no longer fits the row, is refused with what fits.
+- An inference run serves at most the `inference` method's `max_seq_len` (16K) a request, video tokens included: a
+  checkpoint trained at more (for example Gemma at 256 frames x 70 tokens, about 18,500 tokens a video) still serves
+  text and shorter videos, and refuses a longer request with HTTP 400 naming both lengths.
 
 ## Tokens and cost
 
@@ -92,7 +96,7 @@ settings; the estimate counts them at the job's.
 
 | | tokens |
 |---|---|
-| an image, `qwen3.8-27b` | up to 514 (one per 32 x 32 pixels, so a small image costs less) |
+| an image, Qwen models | up to 514 (one per 32 x 32 pixels, so a small image costs less) |
 | an image, `gemma-4-26b-a4b` | about 260-282, whatever its size |
 | a 720p video of 30 s, Qwen defaults (40 frames, 512) | about 9,800 |
 | the same at `video_fps=2`, `video_max_frames=120`, `video_frame_tokens=900` | about 53,000 |
@@ -104,21 +108,22 @@ per million tokens (take the price from `nextron-cloud models`).
 
 ## Serve the trained model
 
-Start a hosted inference run from the completed job and wait until it is ready. At its OpenAI base URL, send
-an MP4 as a user content part with `type: video_url` and `video_url.url` set to a `data:video/mp4;base64,...` URI,
-followed by the text question. Stop the run after evaluation.
+Start an inference run from the completed job with `images=True` (CLI `inference start ... --images`) and wait until
+it is ready ([inference.md](inference.md)). Then:
 
-On `qwen3.8-27b`, the inference agent reads the saved training configuration. Its video decoder uses the training
-frame rate, frame cap and pixel limits. In the bounce-counting recipe, a 20-clip comparison matched the training
-reference's frame indices, preprocessed pixels and rendered evaluation prompt tokens on every clip. The hosted
-checkpoint answered all 100 held-out videos exactly, with the same prompt-token count as the offline evaluation on
-each video.
+- `connect(...).sample(...)`: images and videos as content parts, as in a dataset (`{"type": "image", "image":
+  "clock.png"}`, `{"type": "video", "video": "race.mp4"}`); the files are sent to the run first.
+- OpenAI base URL: an image as `{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}`, an MP4 as
+  `{"type": "video_url", "video_url": {"url": "data:video/mp4;base64,..."}}`, followed by the text question.
 
-Gemma checkpoints trained with `video_max_frames=8` and `128` both served short MP4s. The 128-frame checkpoint
-answered a 32-frame clip and twelve 24-frame clips correctly in the moving-disk test. Hosted responses expose
-prompt token usage but do not report the internal frame indices.
+Stop the run after evaluation.
 
-For reusable files, start the inference run with `images=True` (CLI: `--images`). Once ready, call
-`client.inference.connect(run.id)` as a context manager and pass a list of prompts to `live.sample`.
-A user message can include `{"type":"video","video":"clip.mp4"}` or `{"type":"image","image":"frame.png"}`.
-Call `live.add_images(paths)` to upload files before the first sample. Stop the run after evaluation.
+A run serves videos with the frame settings the job trained with, read from the checkpoint:
+
+- Qwen models: the training frame rate, frame cap and pixel limits. In the bounce-counting recipe on `qwen3.8-27b`,
+  20 clips matched the training reference's frame indices, preprocessed pixels and prompt tokens, and the hosted
+  checkpoint answered all 100 held-out videos exactly, with the offline evaluation's prompt-token count on each.
+- `gemma-4-26b-a4b`: the trained `video_max_frames` and `video_frame_tokens`. Checkpoints trained at 8 x 70,
+  32 x 70, 32 x 140 and 32 x 280 each served every held-out video with exactly the prompt tokens of its training rows.
+
+For an evaluation set, check the files before the run starts (`datasets.upload_images`, inference.md).

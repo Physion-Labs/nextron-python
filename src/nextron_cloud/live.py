@@ -31,6 +31,17 @@ OUTAGE_SECONDS = 120  # how long a call keeps trying through a restart of the AP
 IMAGES_SECONDS = 1800  # how long new images may take to be checked, cleaned and brought to the run
 
 
+def write_media_tar(sources: dict[str, tuple[str, str]], bundle: Path) -> None:
+    """A tar of image and video files (SHA-256 -> "image" | "video", a path or data: URI), each named by its SHA-256:
+    the upload a run takes its media from."""
+    with tarfile.open(bundle, "w") as tar:
+        for sha, (kind, source) in sources.items():
+            extension, data = read_media(kind, source, Path.cwd())
+            info = tarfile.TarInfo(f"{kind}s/{sha}.{extension}")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+
+
 class LiveRun:
     """A ready RL run driven with NexCloud's own calls: sample a batch of prompts, score the replies in your own
     code, train on the rewards. NexCloud keeps the sampled tokens and computes the advantages, so only your prompts and
@@ -152,16 +163,17 @@ class LiveRun:
         return SampleBatch(id=made["batch"], samples=samples, generate_seconds=done.get("generate_seconds"),
                            seconds=round(time.monotonic() - started, 3))
 
-    def add_images(self, images: Sequence[str | Path], *, timeout: float = IMAGES_SECONDS) -> None:
+    def add_images(self, images: Sequence[str | Path], *, timeout: float = IMAGES_SECONDS, dataset_id: str | None = None) -> None:
         """Send image files (JPEG or PNG; a path or a base64 `data:` URI each) and video files (MP4, a path ending in
         .mp4) to the run ahead of the prompts that hold them. The ones it does not have yet are uploaded as one
         dataset, checked and decoded on the server, and brought to the run: a minute or two, more for thousands.
-        Returns when the run has them all."""
+        With `dataset_id` (from `datasets.upload_images`, checked before the run started) the run takes that dataset's
+        files instead of an upload. Returns when the run has them all."""
         sources = {}
         for image in images:
             kind = "video" if str(image).lower().endswith(".mp4") else "image"
             sources[self._sha(kind, str(image))] = (kind, str(image))
-        self._send_images(sources, timeout)
+        self._send_images(sources, timeout, dataset_id)
 
     def _sha(self, kind: str, source: str) -> str:
         """The SHA-256 of an image's or a video's bytes; a file is read once while it does not change."""
@@ -190,28 +202,24 @@ class LiveRun:
             self._send_images(sources, IMAGES_SECONDS)
         return out
 
-    def _send_images(self, sources: dict[str, tuple[str, str]], timeout: float) -> None:
+    def _send_images(self, sources: dict[str, tuple[str, str]], timeout: float, dataset_id: str | None = None) -> None:
         """Bring the images and videos (SHA-256 -> "image" | "video", a path or data: URI) the run lacks to it:
-        upload, check, attach, wait."""
+        upload and check (unless `dataset_id` already holds them), attach, wait."""
         deadline = time.monotonic() + timeout
         missing: list[str] = self._call("POST", "/images/missing", {"sha256": sorted(sources)})["missing"]
         if not missing:
             return
-        with tempfile.TemporaryDirectory() as work:
-            bundle = Path(work) / "images.tar"
-            with tarfile.open(bundle, "w") as tar:
-                for sha in missing:
-                    kind, source = sources[sha]
-                    extension, data = read_media(kind, source, Path.cwd())
-                    info = tarfile.TarInfo(f"{kind}s/{sha}.{extension}")
-                    info.size = len(data)
-                    tar.addfile(info, io.BytesIO(data))
-            dataset = self._client.datasets._send(bundle, f"images of {self.id}", True)
-        dataset = self._client.datasets.wait(dataset.id, timeout=timeout)
-        if dataset.state != "ready":
-            raise NexTronError("the images did not pass their check: " + "; ".join(dataset.errors))
+        if dataset_id is None:
+            with tempfile.TemporaryDirectory() as work:
+                bundle = Path(work) / "images.tar"
+                write_media_tar({sha: sources[sha] for sha in missing}, bundle)
+                dataset = self._client.datasets._send(bundle, f"images of {self.id}", True)
+            dataset = self._client.datasets.wait(dataset.id, timeout=timeout)
+            if dataset.state != "ready":
+                raise NexTronError("the images did not pass their check: " + "; ".join(dataset.errors))
+            dataset_id = dataset.id
         base = "/v1/training/sessions" if self._trains else "/v1/inference"
-        self._client._post(f"{base}/{self.id}/images", {"dataset_id": dataset.id})
+        self._client._post(f"{base}/{self.id}/images", {"dataset_id": dataset_id})
         while self._call("POST", "/images/missing", {"sha256": missing})["missing"]:
             if time.monotonic() > deadline:
                 raise TimeoutError(f"the run still lacks images after {timeout} s")

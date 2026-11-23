@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0rc28
+
+- `datasets.upload_images(paths)` checks an evaluation set's images and videos before an inference or RL run starts;
+  `live.add_images(paths, dataset_id=...)` gives them to the run without another upload (inference.md).
+- `ModelInfo.tools` and `Dataset.videos` / `tools` / `converted_from` are typed fields.
+- Guide: the small Qwen models (`qwen3.5-4b`, `qwen3.5-9b`, `qwen3.5-9b-base`, `qwen3.6-35b-a3b`,
+  `qwen3.5-35b-a3b-base`) in media.md, their time and checkpoint sizes, image prompts on inference runs, and the
+  inference context limit for videos.
+
 ## 0.1.0rc27
 
 - Tool calls in chat datasets, in OpenAI's format (`tools`, assistant `tool_calls`, `tool` messages). Ai2/Dolci,

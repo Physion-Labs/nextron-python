@@ -11,8 +11,8 @@ info = client.jobs.checkpoint(job_id)        # step, bytes, expires (unix time),
 client.jobs.download_checkpoint(job_id, f"checkpoints/{job_id}")
 ```
 
-- Check free disk space against `info.bytes` first: about 55 GB for a ~30B model, 250-360 GB for 120-180B, 600 GB and
-  more for the largest.
+- Check free disk space against `info.bytes` first: 9 GB for `qwen3.5-4b`, 15-19 GB for the 7-9B models, about
+  55 GB for a ~30B model and 72 GB for the 35B-A3B ones, 250-360 GB for 120-180B, 600 GB and more for the largest.
 - Every downloaded file's sha256 is checked against the checkpoint's list; a mismatch removes the file and raises.
 - Files already complete are skipped and a partial file is resumed: if the download stops, run it again.
 - `include=["*.json", "*.jinja", "tokenizer*"]` (CLI `--include`, repeatable) downloads only matching files, e.g. the

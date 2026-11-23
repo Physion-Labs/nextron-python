@@ -4,7 +4,7 @@
 
 `client.models()` (CLI `nextron-cloud models`) is the live list. Per model:
 
-- `methods`: `full` and/or `lora`, each with `max_seq_len` (the longest sample it trains), `price_per_mtok` (US cents
+- `methods`: the ways it trains or serves (`full`, `lora`, `dpo`, `grpo`, `interactive` for Serverless RL, `inference`). `full` and `lora` each have `max_seq_len` (the longest sample it trains), `price_per_mtok` (US cents
   per million tokens trained) and `layouts` (GPU setups, in the order `layout="auto"` tries them).
 - `layouts[id]`: `gpus`, `tokens_per_s_per_gpu`, `available` (a job would start now), `queued` (jobs ahead).
 - `batch_size` / `validation_set`: whether `params.batch_size` / `params.val_dataset_id` are accepted. Large
@@ -22,8 +22,8 @@ Longer-context versions are separate ids (for example `...-256k`) with their own
 - **full**: every weight trained; FP32 master weights, gradients and AdamW states, BF16 compute.
 - **lora**: rank 32, alpha 64, on every linear layer of the language model (routed MoE experts excluded); base
   weights frozen. The adapters are **merged** into the checkpoint, so it is a full model like a full fine-tune.
-  Every model but `kimi-k3.1-pro` and the long-context ids (`...-256k`, `...-1m`) has it (a model's `methods` say
-  so). The larger models train LoRA on fewer GPUs than a full fine-tune: with `layout="auto"` the job takes the
+  Most models have it; `kimi-k3.1-pro`, the Olmo-3 models and the long-context ids (`...-256k`, `...-1m`) do not
+  (a model's `methods` say so). The larger models train LoRA on fewer GPUs than a full fine-tune: with `layout="auto"` the job takes the
   smallest setup that trains it.
 
 ## Params
@@ -67,7 +67,9 @@ tokens (`dataset.tokens[model].total`) / tokens a step: 5M tokens on 8 GPUs ≈ 
 
 `batch_size` (samples a step, where `models()` allows it) gives smaller, more numerous steps, but each GPU must get at
 least 8K tokens a step: the smallest batch is about 8 GPUs × 8,192 / average sample length (the server refuses less
-and says the minimum). Below about 16K a step runs less efficiently (a notice says so). The job's notices report the
+and says the minimum). Below about 16K a step runs less efficiently (a notice says so): 6,000 short image samples at
+8K tokens a GPU trained `qwen3.5-4b` at 6,200-8,700 tokens/s/GPU (12,000 listed) and `qwen3.6-35b-a3b` at
+1,100-2,200 (11,500 listed); the cost per token is the same, the run takes longer. The job's notices report the
 batch it actually used.
 
 Decide with the steps the job will really have: `estimate` returns `steps` for the batch you give. The same data can be
@@ -108,6 +110,8 @@ A dataset under one step's tokens (see above; for example a few thousand short s
 |---|---|---|---|---|
 | `qwen3.8-27b`, `gemma-4-26b-a4b`, `muse-glimmer-30b` (and their long-context ids) | 2 min | 1-2 min | 6-20 min | 52-60 GB |
 | `nemotron-3-super-120b`, `qwen3.8-next-180b` | 6-8 min | 3-6 min | 22-28 min | 250-360 GB |
+| the `olmo-3-7b` ids, `qwen3.5-4b`, `qwen3.5-9b`, `qwen3.5-9b-base` | 1.5-2 min | under 1 min | 2-5 min | 9-19 GB |
+| `qwen3.6-35b-a3b`, `qwen3.5-35b-a3b-base` | 4 min | 1 min | about 45 min | 72 GB |
 | `mimo-311b`, `glm-5.3-flash`, `minimax-m3.1-flash`, `deepseek-v4.1-flash` | 4-5 min | 9-13 min | 35-60 min | 600 GB+ |
 
   Plus the wait in the queue when no GPU setup is free (`models()` shows `available` and `queued`). Uploads from one

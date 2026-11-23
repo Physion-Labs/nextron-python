@@ -560,6 +560,34 @@ def test_a_live_run_sends_the_images_and_videos_of_its_prompts_before_it_samples
     assert [c for c in calls if c in wanted] == [wanted[0], wanted[1], wanted[2], wanted[0], wanted[0], wanted[3]]
 
 
+def test_images_checked_before_a_run_are_attached_without_a_second_upload(make_client, tmp_path):
+    import hashlib
+    import struct
+
+    png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I4sII", 13, b"IHDR", 64, 48)
+    (tmp_path / "clock.png").write_bytes(png)
+    sha = hashlib.sha256(png).hexdigest()
+    calls, missing = [], [[sha], []]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(f"{request.method} {path}")
+        if path.endswith("/images/missing"):
+            return httpx.Response(200, json={"missing": missing.pop(0)})
+        if path == "/v1/datasets":
+            return httpx.Response(201, json={"id": "ds_1", "upload_url": "https://storage.test/put", "upload_headers": {}})
+        if path in ("/v1/datasets/ds_1/complete", "/v1/datasets/ds_1"):
+            return httpx.Response(200, json={"id": "ds_1", "name": "images", "state": "ready", "bytes": 1, "created": 0, "images": 1,
+                                             "kind": "images"})
+        return httpx.Response(200, json={})
+
+    client = make_client(handler)
+    media = client.datasets.upload_images([tmp_path / "clock.png"])
+    with client.inference.connect("inf_1") as live:
+        live.add_images([tmp_path / "clock.png"], dataset_id=media.id)
+    assert calls.count("POST /v1/datasets") == 1 and "POST /v1/inference/inf_1/images" in calls
+
+
 def test_a_run_billed_by_time_has_a_bill(make_client):
     bill = {"job_id": "rl_1", "state": "succeeded", "billing": "settled", "price_per_hour": 2800, "seconds_charged": 345,
             "held_credits": 700, "charged_credits": 269, "settled_at": 9.0}

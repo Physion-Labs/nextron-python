@@ -29,7 +29,7 @@ inference.md.
 | `GET /v1/billing/ledger` | every balance change (top-ups, grants, charges) |
 
 `GET /v1/models` returns, per model: `id`, `name`, `maker`, `params`, `active_params`, `architecture`, `input` (`text`,
-and `image` / `video` where they are open to your organisation), `batch_size` (whether `params.batch_size` is taken),
+and `image` / `video` where they are open to your organisation), `tools` (whether it trains on tool calls), `batch_size` (whether `params.batch_size` is taken),
 `validation_set`, `layouts` (`{id: {gpus, tokens_per_s_per_gpu, available, queued}}`) and `methods`:
 
 | method | fields |
@@ -45,7 +45,7 @@ and `image` / `video` where they are open to your organisation), `batch_size` (w
 |---|---|
 | `POST /v1/datasets` `{"name", "bytes", "images": false}` | reserves an upload. Returns the dataset (`state: "uploading"`) with `upload_url` and `upload_headers` (one `PUT` of the file), or `part_urls` for a large file (multipart, then `complete`). `images: true` means the upload is a bundle (a tar of the samples and their image and video files, as the SDK writes it) |
 | `POST /v1/datasets/{id}/complete` | after the upload: the server's check starts (`checking`, then `ready` or `invalid`) |
-| `GET /v1/datasets`, `GET /v1/datasets/{id}` | your datasets and the sample datasets: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens` (`{model: {total, max, over: {max_seq_len: count}}}`), `errors`, `kind` (`chat`, `rl`, `preference`, `images`), `images`, `videos`, `sample`, `validation`, `source`, `converted_from` |
+| `GET /v1/datasets`, `GET /v1/datasets/{id}` | your datasets and the sample datasets: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens` (`{model: {total, max, over: {max_seq_len: count}}}`), `errors`, `kind` (`chat`, `rl`, `preference`, `images`), `images`, `videos`, `tools`, `sample`, `validation`, `source`, `converted_from` |
 | `DELETE /v1/datasets/{id}` | 409 while an unfinished job uses it |
 | `GET /v1/datasets/{id}/download` | a one-hour link to the file as training reads it |
 | `GET /v1/datasets/{id}/plan?model=&layout=&max_seq_len=&batch_size=&tokens_per_gpu=&gradient_accumulation_steps=&train_type=` | the batch a job would train with: `layout`, `gpus`, `batch` (samples a step), `pack_len`, `tokens_per_gpu`, `micro_steps`, `steps_per_epoch`, `min_batch`, `efficient`, `fits` |

@@ -15,7 +15,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | call | returns |
 |---|---|
 | `client.me()` | `org` (`id`, `name`, `role`, `credits`: the balance in US cents), `orgs` (every organisation of the login; no balance), `billing` (`prices`: `{model: {method: cents_per_million_tokens}}`, possibly including retired models; `checkout`, `min_cents`, `max_cents`: website top-ups) |
-| `client.models()` | `list[ModelInfo]`, live: `id`, `name`, `methods` (`max_seq_len`, `layouts`, `price_per_mtok`, `defaults`, `max_tokens_per_gpu`), `layouts` (`gpus`, `tokens_per_s_per_gpu`, `available`, `queued`), `batch_size`, `validation_set` |
+| `client.models()` | `list[ModelInfo]`, live: `id`, `name`, `input` (`text`, and `image` / `video` where open to your organisation), `tools` (trains on tool calls), `methods` (`max_seq_len`, `layouts`, `price_per_mtok`, `defaults`, `max_tokens_per_gpu`), `layouts` (`gpus`, `tokens_per_s_per_gpu`, `available`, `queued`), `batch_size`, `validation_set` |
 | `client.layouts()` | every GPU setup: `id`, `name`, `nodes`, `gpus`, `models`, `tokens_per_s` (per GPU, per model), `available`, `queued`, `coming_soon`. Prefer `models()`, which gives the same per model and method |
 
 ## Datasets
@@ -26,7 +26,8 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `datasets.import_huggingface(url, config="default", split="train", name=None, hf_token=None)` | import one split; `importing` then `checking` |
 | `datasets.huggingface_splits(url, hf_token=None)` | `[{"config", "split", "rows", "bytes"}]` |
 | `datasets.wait(id, timeout=3600, poll_interval=5)` | until `ready` or `invalid` |
-| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, `rl` for prompts with answers, or `preference` for DPO pairs) (see data.md) |
+| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, `rl` for prompts with answers, or `preference` for DPO pairs), `images` / `videos` (file counts; None for text), `tools` (has tool calls), `converted_from` (see data.md) |
+| `datasets.upload_images(paths, name="images", timeout=3600)` | image and MP4 files as one checked dataset for an inference or RL run's prompts (`live.add_images(paths, dataset_id=...)`); returns when ready |
 | `datasets.download_url(id)` | a one-hour link to the file as training reads it |
 | `datasets.delete(id)` | refused (409) while an unfinished job uses it |
 
@@ -78,7 +79,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `rl.start(model, max_hours, max_context=None, max_grad_norm=None, grad_clip=None, idle_timeout=None, images=False, video_fps=None, video_max_frames=None, video_frame_tokens=None, name=None, tags=None)` | `RLRun` in `queued`; 422 for a model without Serverless RL. Video settings: media.md |
 | `rl.connect(id, log_dir=None, log_groups=4)` | `LiveRun` on a ready run (context manager; keeps the run alive while open). `log_dir`: `metrics.jsonl` and `rollouts.jsonl` (the first `log_groups` groups of every step) are written there |
 | `live.sample(prompts, n=1, max_tokens=None, temperature=1.0, top_p=1.0, top_k=-1, stop=None, timeout=None)` | `SampleBatch`: `batch[i][j]` is a `Sample` (`id`, `text`, `finish_reason`, `tokens`); `generate_seconds`, `seconds`. `prompts` is a list, also for one prompt; a prompt is a string, a list of messages, or `{"messages", "tools"}` / `{"tokens"}`. `n` above 1 needs a `temperature` above 0 |
-| `live.add_images(images, timeout=1800)` | sends the image files (paths or `data:` URIs) and MP4 video files (paths ending in `.mp4`) the run lacks and waits until it has them; a run started with `images=True` |
+| `live.add_images(images, timeout=1800, dataset_id=None)` | sends the image files (paths or `data:` URIs) and MP4 video files (paths ending in `.mp4`) the run lacks and waits until it has them; a run started with `images=True`. With `dataset_id` (from `datasets.upload_images`) the run takes that dataset's files, no upload |
 | `live.train(batch, rewards, learning_rate=..., advantage="centered", loss="importance_sampling", clip_low=None, clip_high=None, substeps=1, beta1=None, beta2=None, eps=None, weight_decay=None, timeout=None)` | one training call; `rewards` has the batch's shape. Or `episodes=[Episode(samples, reward, group=None)]` for conversations. `TrainStep`, the step's record: `step`, `reward_mean`, `reward_std`, `groups`, `zero_variance_fraction`, `all_best_fraction`, `all_worst_fraction`, `replies`, `completion_length_mean`, `truncated_fraction`, `kl_sample_train`, `step_s`, `generation_s`, `train_s`, `client_s`, `session_s`, `tokens`, `tokens_per_s_per_gpu`, `rows`, `row_tokens`, `row_fill`, `seconds` |
 | `live.info()`, `live.finish()`, `live.close()` | the model, context and `round`; save the model and stop the run; stop the keep-alive only |
 | `rl.rollouts(id, step=None)` | `RLRollouts`: a few rollouts of a training call (the latest without `step`): `steps`, `step`, `groups` (the best and the worst group: `reward_mean`, `episodes` with `reward`, `advantage`, `turns` of `prompt` / `reply` / `truncated`); CLI `rl rollouts ID [--step N]` |
@@ -93,9 +94,9 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | Call | Returns |
 |---|---|
 | `inference.estimate(job_id, max_hours)` | `RLEstimate`: `price_per_gpu_hour`, `gpus`, `price_per_hour`, `credits` (held for `max_hours`), `balance`, `enough`; US cents |
-| `inference.start(job_id, max_hours, idle_timeout=None, name=None, tags=None)` | `InferenceRun` in `queued` (the fields of `RLRun`; `params.job_id`); 422 for a job that did not succeed or a model without inference, 410 for a job that finished more than 7 days ago |
+| `inference.start(job_id, max_hours, idle_timeout=None, name=None, tags=None, images=False)` | `InferenceRun` in `queued`; `images=True` lets prompts hold images and videos (inference.md) (the fields of `RLRun`; `params.job_id`); 422 for a job that did not succeed or a model without inference, 410 for a job that finished more than 7 days ago |
 | `inference.get(id)`, `inference.list()`, `inference.wait(id, timeout=None, poll_interval=15, on_poll=None)`, `inference.stop(id, wait=False)` | as for RL runs |
-| `inference.connect(id)` | `LiveRun` with `sample` (`train` raises `NexTronError`) |
+| `inference.connect(id)` | `LiveRun` with `sample` and `add_images` (`train` raises `NexTronError`) |
 | `inference.openai_base_url(id)` | the base URL for an OpenAI client; `api_key` is your NexCloud key |
 
 ## CLI
@@ -123,7 +124,7 @@ nextron-cloud rl start --model M --max-hours H [--max-context T] [--max-grad-nor
                        [--name N] [--tag T ...] [--yes]
 nextron-cloud rl list | get ID | wait ID [--timeout S] | env ID | stop ID [--wait]   # env: shell lines for eval, without the key
 nextron-cloud rl metrics ID | rollouts ID [--step N]
-nextron-cloud inference start --job JOB_ID --max-hours H [--idle-timeout S] [--name N] [--tag T ...] [--yes]
+nextron-cloud inference start --job JOB_ID --max-hours H [--idle-timeout S] [--images] [--name N] [--tag T ...] [--yes]
 nextron-cloud inference list | get ID | wait ID [--timeout S] | url ID | stop ID [--wait]   # url: an OpenAI client's base URL
 nextron-cloud sweep --name N --model M --dataset ID [--layout L] [--param KEY=VALUE ...] --grid KEY=V1,V2 [...] [--yes]
 nextron-cloud report [JOB_ID ...] [--tag T] [--table]

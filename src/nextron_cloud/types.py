@@ -67,7 +67,8 @@ class ModelInfo(_Model):
     active_params: str
     architecture: str
     input: list[str]
-    methods: dict[str, ModelMethod]  # "full" and/or "lora"
+    tools: bool = False  # trains on samples with tool calls
+    methods: dict[str, ModelMethod]  # "full", "lora", "dpo", "grpo", "interactive" (Serverless RL), "inference"
     batch_size: bool  # whether params.batch_size is accepted
     validation_set: bool  # whether params.val_dataset_id is accepted
     layouts: dict[str, ModelLayout]
@@ -88,6 +89,9 @@ class Dataset(_Model):
     tokens: dict[str, Any] | None = None  # per model: total, longest sample (RL: longest prompt), samples over each length
     kind: Literal["chat", "rl", "preference", "images"] = "chat"  # rl: prompts with answers (grpo); preference: pairs (dpo); images: media for an RL run
     images: int | None = None  # image files of a dataset uploaded with images; None for a text dataset
+    videos: int | None = None  # video files, likewise
+    tools: bool | None = None  # has samples with tool calls (None before the check)
+    converted_from: str | None = None  # the format the server converted it from, if any
 
     @property
     def done(self) -> bool:

@@ -60,8 +60,8 @@ Setup
 - Source and docs: https://github.com/Physion-Labs/nextron-python
 - My API key is in the environment variable NEXTRON_API_KEY. Never print it or write it into a file.
 - Before anything else run `uv run nextron-cloud guide` and read all of it. At each step read its topic too:
-  `nextron-cloud guide data`, `... training`, `... rl`, `... dpo`, `... monitoring`, `... checkpoints`,
-  `... inference`, `... api`. Follow its rules.
+  `nextron-cloud guide data`, `... media`, `... training`, `... rl`, `... dpo`, `... monitoring`,
+  `... checkpoints`, `... inference`, `... serverless-rl`, `... api`. Follow its rules.
 
 The experiment
 - Model: ask me, or pick one from `nextron-cloud models` and tell me why.
