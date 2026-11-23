@@ -27,6 +27,21 @@ An image is a file path (relative to the JSONL file) or a base64 "data:" URI; Op
 "image_url": {"url": ...}} is read the same way. A video is a file path. A URL is not fetched: download the file first.
 Uploading packs the image and video files with the samples (`write_bundle`).
 
+A chat sample may use tools, in OpenAI's format: the functions the model may call in a top-level "tools" list, an
+assistant message's calls in "tool_calls" ({"id", "type": "function", "function": {"name", "arguments"}}, arguments an
+object or a JSON string), and each result in a {"role": "tool", "tool_call_id", "content"} message:
+
+    {"tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {...}}}],
+     "messages": [{"role": "user", "content": "Weather in Paris?"},
+                  {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function",
+                      "function": {"name": "get_weather", "arguments": {"city": "Paris"}}}]},
+                  {"role": "tool", "tool_call_id": "c1", "content": "18C"},
+                  {"role": "assistant", "content": "It is 18C."}]}
+
+Ai2 / Dolci tool rows ("functions", "function_calls", "environment"), ShareGPT tool rows ("function_call" and
+"observation" turns) and Hermes rows (<tool_call> JSON in the assistant's text) are converted to it (to_tool_chat).
+Training renders each model's own tool format and puts loss on the assistant's calls and answers, never on results.
+
 Reinforcement learning (train_type "grpo") takes prompts with the answer the reward checks the model's reply against,
 one kind per file:
 
@@ -44,11 +59,13 @@ Preference training (train_type "dpo") takes a prompt with a preferred and a rej
 """
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import io
 import json
 import os
+import re
 import struct
 import tarfile
 import tempfile
@@ -297,6 +314,206 @@ def _media_parts(sample: Any) -> Iterator[tuple[list[Any], int, str, str]]:
                 yield parts, i, media[0], media[1]
 
 
+def is_tool_sample(sample: Any) -> bool:
+    """Whether the sample has tools, tool calls or tool results in any of the formats to_tool_chat takes."""
+    if not isinstance(sample, dict):
+        return False
+    if sample.get("tools") or sample.get("functions"):
+        return True
+    turns = sample.get("messages") or sample.get("conversations") or sample.get("conversation") or []
+    for m in turns if isinstance(turns, list) else []:
+        if not isinstance(m, dict):
+            continue
+        role = str(m.get("role", m.get("from", ""))).lower()
+        if role in TOOL_SOURCE_ROLES or any(m.get(k) for k in ("tool_calls", "function_call", "function_calls", "functions")):
+            return True
+    return False
+
+
+def tool_spec(tool: Any) -> dict[str, Any]:
+    """A tool definition as OpenAI's {"type": "function", "function": {"name", "description"?, "parameters"?}}."""
+    if isinstance(tool, dict) and isinstance(tool.get("function"), dict):
+        tool = tool["function"]
+    if not isinstance(tool, dict) or not isinstance(tool.get("name"), str) or not tool["name"]:
+        raise ValueError('every tool needs a "name" (OpenAI: {"type": "function", "function": {"name", "parameters"}})')
+    return {"type": "function", "function": tool}
+
+
+def tool_list(value: Any) -> list[dict[str, Any]]:
+    """A sample's tools: a list, or a JSON string of one (LLaMA-Factory, Ai2)."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            raise ValueError('"tools" is a string that is not JSON') from None
+    value = [value] if isinstance(value, dict) else value
+    if not isinstance(value, list):
+        raise ValueError('"tools" must be a list of function definitions')
+    return [tool_spec(t) for t in value]
+
+
+def arguments(value: Any) -> dict[str, Any]:
+    """A call's arguments as an object: given as one, or as a JSON string of one (OpenAI's API sends a string)."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else {}
+        except json.JSONDecodeError:
+            raise ValueError("has tool call arguments that are not JSON") from None
+    if not isinstance(value, dict):
+        raise ValueError("has tool call arguments that are not a JSON object")
+    return value
+
+
+def python_calls(source: str) -> list[tuple[str, dict[str, Any]]]:
+    """Ai2's function_calls string, one Python call per line (get_weather(city="Paris")), as (name, arguments)."""
+    try:
+        tree = ast.parse(source.strip(), mode="exec")
+    except SyntaxError:
+        raise ValueError(f"has function_calls that are not Python calls: {source[:80]!r}") from None
+    calls = []
+    for statement in tree.body:
+        call = statement.value if isinstance(statement, ast.Expr) else None
+        if (not isinstance(call, ast.Call) or call.args or any(k.arg is None for k in call.keywords)
+                or not isinstance(call.func, (ast.Name, ast.Attribute))):
+            raise ValueError(f"has function_calls that are not name(key=value, ...) calls: {source[:80]!r}")
+        try:
+            kwargs = {str(k.arg): ast.literal_eval(k.value) for k in call.keywords}
+        except ValueError:
+            raise ValueError(f"has function_calls whose arguments are not literal values: {source[:80]!r}") from None
+        calls.append((ast.unparse(call.func), kwargs))
+    return calls
+
+
+HERMES_CALL = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)
+HERMES_TOOLS = re.compile(r"<tools>\s*(.*?)\s*</tools>", re.S)
+HERMES_RESPONSE = re.compile(r"^\s*<tool_response>\s*(.*?)\s*</tool_response>\s*$", re.S)
+TOOL_SOURCE_ROLES = ("tool", "environment", "function", "observation", "function_call", "ipython")
+
+
+def to_tool_chat(sample: dict[str, Any]) -> dict[str, Any]:
+    """A chat sample with tools as the server stores it, {"messages", "tools"} in OpenAI's format:
+    tools at the top level; an assistant message's calls in "tool_calls" ({"id", "type": "function", "function": {"name",
+    "arguments": object}}); each result a {"role": "tool", "tool_call_id", "content"} message. Taken as well:
+        Ai2 / Dolci: "functions" (JSON) on the system message, "function_calls" (Python calls) on assistant messages,
+            results in "environment" messages; the original messages are kept as "ai2" (Olmo is trained on them as written)
+        ShareGPT (LLaMA-Factory): "function_call" turns (JSON {"name", "arguments"}) and "observation" turns, "tools"
+        Hermes: <tool_call>{"name", "arguments"}</tool_call> in assistant text, tools in the system's <tools>...</tools>
+    ValueError says why it cannot be used."""
+    tools = tool_list(sample["tools"]) if sample.get("tools") else []
+    name, ai2 = "messages + tools", None
+    if "messages" in sample:
+        source = sample["messages"]
+        if not isinstance(source, list) or not source or not all(isinstance(m, dict) for m in source):
+            raise ValueError('needs a non-empty "messages" list')
+        if any("functions" in m or "function_calls" in m or m.get("role") == "environment" for m in source):
+            name, ai2 = "Ai2 tools", [{k: m[k] for k in ("role", "content", "functions", "function_calls") if k in m} for m in source]
+    else:
+        turns = sample.get("conversations", sample.get("conversation"))
+        if not isinstance(turns, list) or not turns or not all(isinstance(t, dict) for t in turns):
+            raise ValueError('needs a non-empty "messages" (or "conversations") list')
+        roles = SHAREGPT_ROLES | {r: r for r in TOOL_SOURCE_ROLES}
+        source = [{"role": roles.get(str(t.get("from", t.get("role", ""))).lower(), "?"), "content": t.get("value", t.get("content"))}
+                  for t in turns]
+        name = "ShareGPT tools"
+    given = next((sample[k] for k in ("system", "system_prompt") if isinstance(sample.get(k), str) and sample[k]), None)
+    if given:
+        source = [{"role": "system", "content": given}] + source
+    messages: list[dict[str, Any]] = []
+    calls_open: list[str] = []   # the last assistant message's call ids
+    pending: list[str] = []   # ... not answered yet
+    for m in source:
+        role = m.get("role")
+        if role == "system":
+            content = _text(m.get("content"))
+            hermes = HERMES_TOOLS.search(content)
+            if m.get("functions"):   # Ai2: a JSON list after the system text
+                tools += tool_list(m["functions"])
+            elif not tools and hermes:
+                found = hermes[1]
+                try:
+                    tools = tool_list(json.loads(found) if found.startswith("[") else [json.loads(line) for line in found.splitlines() if line.strip()])
+                except json.JSONDecodeError:
+                    raise ValueError("has <tools> in its system message that are not JSON") from None
+                name = "Hermes tools"
+            messages.append({"role": "system", "content": content})
+        elif role == "user":
+            messages.append({"role": "user", "content": _text(m.get("content"))})
+            calls_open = pending = []
+        elif role in ("assistant", "function_call"):
+            content = _text(m.get("content") or "") if role == "assistant" else ""
+            calls: list[tuple[Any, ...]] = []   # (name, arguments, id?)
+            if role == "function_call":   # LLaMA-Factory: the turn is the call (or a list of them), as JSON
+                found = m.get("content")
+                try:
+                    found = json.loads(found) if isinstance(found, str) else found
+                except json.JSONDecodeError:
+                    raise ValueError("has a function_call turn that is not JSON") from None
+                for call in found if isinstance(found, list) else [found]:
+                    if not isinstance(call, dict):
+                        raise ValueError('a function_call turn needs {"name", "arguments"}')
+                    calls.append((call.get("name"), call.get("arguments")))
+            elif m.get("function_calls"):
+                calls = python_calls(m["function_calls"])
+            elif m.get("function_call"):   # OpenAI's old single call
+                calls = [(m["function_call"].get("name"), m["function_call"].get("arguments"))]
+            elif m.get("tool_calls"):
+                for call in m["tool_calls"]:
+                    function = call.get("function", call) if isinstance(call, dict) else None
+                    if not isinstance(function, dict):
+                        raise ValueError('every tool call needs a "function" with "name" and "arguments"')
+                    calls.append((function.get("name"), function.get("arguments"), call.get("id")))
+            elif "<tool_call>" in content and tools:
+                for found in HERMES_CALL.findall(content):
+                    try:
+                        call = json.loads(found)
+                    except json.JSONDecodeError:
+                        raise ValueError("has a <tool_call> that is not JSON") from None
+                    calls.append((call.get("name"), call.get("arguments", call.get("parameters"))))
+                content = HERMES_CALL.sub("", content).strip()
+                name = "Hermes tools"
+            if role == "function_call" and messages and messages[-1]["role"] == "assistant" and "tool_calls" not in messages[-1]:
+                message: dict[str, Any] = messages.pop()   # its text came in the turn before
+            else:
+                message = {"role": "assistant", "content": content}
+            if calls:
+                message["tool_calls"] = []
+                for n, call in enumerate(calls):
+                    function, args = call[0], call[1]
+                    if not isinstance(function, str) or not function:
+                        raise ValueError("has a tool call without a function name")
+                    if function not in {t["function"]["name"] for t in tools}:
+                        raise ValueError(f'calls {function!r}, which is not in the sample\'s tools')
+                    call_id = (call[2] if len(call) > 2 else None) or f"call_{len(messages)}_{n}"
+                    message["tool_calls"].append({"id": str(call_id), "type": "function", "function": {"name": function, "arguments": arguments(args)}})
+                calls_open = pending = [c["id"] for c in message["tool_calls"]]
+            messages.append(message)
+        elif role in TOOL_SOURCE_ROLES:
+            if not messages or (messages[-1]["role"] != "tool" and "tool_calls" not in messages[-1]):
+                raise ValueError("has a tool result that does not follow the assistant's tool call")
+            content = m.get("content")
+            parts = isinstance(content, list) and all(isinstance(p, dict) and "type" in p for p in content)
+            if not isinstance(content, str) and not parts:   # a result given as JSON
+                content = json.dumps(content, ensure_ascii=False)
+            content = HERMES_RESPONSE.sub(r"\1", _text(content))
+            call_id = m.get("tool_call_id") or (pending[0] if pending else None)
+            if call_id not in calls_open:
+                raise ValueError("has more tool results than tool calls, or one whose tool_call_id matches no call")
+            pending = [c for c in pending if c != call_id]
+            messages.append({"role": "tool", "tool_call_id": str(call_id), "content": content})
+        else:
+            raise ValueError('every message needs a "role": system, user, assistant or tool')
+    if any(m["role"] == "system" for m in messages[1:]):
+        raise ValueError("has a system message that is not the first message; a sample can have one, first")
+    if not any(m["role"] == "assistant" and (m["content"] or m.get("tool_calls")) for m in messages):
+        raise ValueError("needs at least one assistant message with text or tool calls to learn from")
+    if not tools:
+        raise ValueError('has tool calls or results but no "tools": list the functions the model may call')
+    row = {"messages": messages, "tools": tools}
+    if ai2:
+        row["ai2"] = ai2
+    return row
+
+
 def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
     """The sample as chat messages. ValueError says why it cannot be trained on. `images`: a list that takes what
     each image and video of the user messages names, in order ("<image>" or "<video>" stands for it in the text);
@@ -305,6 +522,8 @@ def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
         raise ValueError("is a JSON array; upload JSONL: one JSON object per line")
     if not isinstance(sample, dict):
         raise ValueError("is not a JSON object")
+    if is_tool_sample(sample):   # chat samples with tools go through to_tool_chat
+        raise ValueError("has tools or tool calls, which only chat (SFT) samples take, not RL prompts or preference pairs")
     if any(sample.get(f) for f in MEDIA_FIELDS):
         raise ValueError(MEDIA_ERROR)
     tags = images is not None   # the trainer reads a media tag anywhere in a sample of a file with images
@@ -433,6 +652,10 @@ def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
         return to_rl(sample, images)
     if is_preference(sample):
         return to_preference(sample)
+    if is_tool_sample(sample):
+        if any(_media_parts(sample)):
+            raise ValueError("has tool calls; samples with tools and images or videos are not taken yet")
+        return to_tool_chat(sample)
     return {"messages": to_messages(sample, images)}
 
 

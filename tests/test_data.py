@@ -291,3 +291,29 @@ def test_an_rl_or_preference_sample_with_a_blank_prompt_is_refused():
     for sample in ({"prompt": "   ", "answer": "4"}, {"messages": [{"role": "user", "content": "\n"}], "chosen": "a", "rejected": "b"}):
         with pytest.raises(ValueError, match="needs a non-empty last user message"):
             to_sample(sample)
+
+
+WEATHER = {"name": "get_weather", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}
+CALL = {"messages": [{"role": "user", "content": "Weather in Paris?"},
+                     {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\": \"Paris\"}"}}]},
+                     {"role": "tool", "tool_call_id": "c1", "content": "18C"}, {"role": "assistant", "content": "It is 18C."}],
+        "tools": [{"type": "function", "function": WEATHER}]}
+DOLCI = {"messages": [{"role": "system", "content": "SYS", "functions": json.dumps([WEATHER])}, {"role": "user", "content": "Weather in Paris?"},
+                      {"role": "assistant", "content": "", "function_calls": 'get_weather(city="Paris")'},
+                      {"role": "environment", "content": "18C"}, {"role": "assistant", "content": "It is 18C."}]}
+
+
+@pytest.mark.parametrize("sample", [CALL, DOLCI])
+def test_tool_samples_become_openai_messages_with_tools(sample):
+    row = to_sample(sample)
+    call = row["messages"][-3]["tool_calls"][0]
+    assert call["function"] == {"name": "get_weather", "arguments": {"city": "Paris"}} and row["messages"][-2]["role"] == "tool"
+    assert row["tools"] == [{"type": "function", "function": WEATHER}] and ("ai2" in row) == (sample is DOLCI)
+
+
+def test_check_file_refuses_a_call_to_an_unknown_tool(tmp_path: Path):
+    bad = {**CALL, "tools": [{"type": "function", "function": {"name": "get_time"}}]}
+    path = tmp_path / "tools.jsonl"
+    path.write_text(json.dumps(CALL) + "\n" + json.dumps(bad) + "\n")
+    result = check_file(path)
+    assert result.samples == 1 and result.errors == ["line 2: calls 'get_weather', which is not in the sample's tools"]

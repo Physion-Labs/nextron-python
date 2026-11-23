@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0rc27
+
+- Tool calls in chat datasets, in OpenAI's format (`tools`, assistant `tool_calls`, `tool` messages). Ai2/Dolci,
+  ShareGPT (`function_call` / `observation`) and Hermes (`<tool_call>`) rows are converted to it; `nextron-cloud
+  models` shows which models take tools (data.md, "Tool calls").
+
 ## 0.1.0rc26
 
 - Training settings: `max_grad_norm` (0 = no clipping), `adam_beta1`, `adam_beta2`, `adam_epsilon`, `tokens_per_gpu`,

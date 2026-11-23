@@ -143,3 +143,31 @@ datasets (`sample=True` in `datasets.list()`) can be trained on by every account
 
 Samples may hold images and videos on some models: the format, limits, video settings and their cost are in
 [media.md](media.md).
+
+## Tool calls
+
+A chat sample may use tools, in OpenAI's chat format. One dataset trains any model that takes tools:
+`nextron-cloud models` lists them with `"tools": true` (Qwen3.8 and Qwen3.5/3.6, DeepSeek-V4.1-Flash, Olmo-3-7B
+except Think). A job on another model refuses a dataset with tool calls.
+
+```json
+{"tools": [{"type": "function", "function": {"name": "get_weather", "description": "Weather for a city.",
+            "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}],
+ "messages": [
+   {"role": "user", "content": "Weather in Paris?"},
+   {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function",
+       "function": {"name": "get_weather", "arguments": {"city": "Paris"}}}]},
+   {"role": "tool", "tool_call_id": "c1", "content": "18C, sunny"},
+   {"role": "assistant", "content": "It is 18C and sunny in Paris."}]}
+```
+
+- `tools`: every function a call names must be listed. `arguments` is an object or a JSON string.
+- An assistant message may make several calls; a `tool` message answers one, in order or by `tool_call_id`.
+- Training lays the sample out in the model's own tool format (Qwen's `<tool_call><function=...>`, DeepSeek's
+  DSML, Olmo's `<function_calls>`), exactly as its chat template does. Loss is on the assistant's calls and answers,
+  never on the tool results.
+- Converted on upload, as the other formats are: Ai2 / Dolci rows (`functions` on the system message,
+  `function_calls` as Python calls, `environment` results; Olmo trains on these exactly as written), ShareGPT tool
+  rows (`function_call` and `observation` turns, with `tools`) and Hermes rows (`<tool_call>` JSON in the assistant's
+  text, tools in the system's `<tools>...</tools>`).
+- Not yet: tools in RL prompts (RFT, Serverless RL datasets) and DPO pairs, or in samples with images or videos.
