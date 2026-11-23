@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0rc29
+
+- Guide: an inference run serves its model's training length (65,536; 131,072 on `muse-glimmer-30b`), not 16K.
+
 ## 0.1.0rc28
 
 - `datasets.upload_images(paths)` checks an evaluation set's images and videos before an inference or RL run starts;

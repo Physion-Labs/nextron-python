@@ -85,9 +85,9 @@ A job (`--param`) or an RL run (`rl.start(...)`) chooses how its videos are samp
 - Fast motion: raise `video_fps`. Long videos: raise `video_max_frames` so the frames stay close together. Small text
   or detail in the picture: raise `video_frame_tokens`. Each costs tokens.
 - A choice the model does not take, or a video that no longer fits the row, is refused with what fits.
-- An inference run serves at most the `inference` method's `max_seq_len` (16K) a request, video tokens included: a
-  checkpoint trained at more (for example Gemma at 256 frames x 70 tokens, about 18,500 tokens a video) still serves
-  text and shorter videos, and refuses a longer request with HTTP 400 naming both lengths.
+- An inference run serves the `inference` method's `max_seq_len` a request, video tokens included: the model's
+  training length (65,536; 131,072 on `muse-glimmer-30b`), so a request as long as a training sample fits. A longer
+  one is refused with HTTP 400 naming both lengths.
 
 ## Tokens and cost
 
