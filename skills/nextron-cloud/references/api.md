@@ -26,7 +26,7 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `datasets.import_huggingface(url, config="default", split="train", name=None, hf_token=None)` | import one split; `importing` then `checking` |
 | `datasets.huggingface_splits(url, hf_token=None)` | `[{"config", "split", "rows", "bytes"}]` |
 | `datasets.wait(id, timeout=3600, poll_interval=5)` | until `ready` or `invalid` |
-| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, `rl` for prompts with answers, or `preference` for DPO pairs), `images` / `videos` (file counts; None for text), `tools` (has tool calls), `converted_from` (see data.md) |
+| `datasets.get(id)`, `datasets.list()` | `Dataset`: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens`, `estimated`, `errors`, `sample`, `validation`, `source`, `kind` (`chat`, `rl` for prompts with answers, or `preference` for DPO pairs), `images` / `videos` (file counts; None for text), `tools` (has tool calls), `converted_from` (see data.md) |
 | `datasets.upload_images(paths, name="images", timeout=3600)` | image and MP4 files as one checked dataset for an inference or RL run's prompts (`live.add_images(paths, dataset_id=...)`); returns when ready |
 | `datasets.download_url(id)` | a one-hour link to the file as training reads it |
 | `datasets.delete(id)` | refused (409) while an unfinished job uses it |

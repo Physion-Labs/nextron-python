@@ -45,10 +45,10 @@ and `image` / `video` where they are open to your organisation), `tools` (whethe
 |---|---|
 | `POST /v1/datasets` `{"name", "bytes", "images": false}` | reserves an upload. Returns the dataset (`state: "uploading"`) with `upload_url` and `upload_headers` (one `PUT` of the file), or `part_urls` for a large file (multipart, then `complete`). `images: true` means the upload is a bundle (a tar of the samples and their image and video files, as the SDK writes it) |
 | `POST /v1/datasets/{id}/complete` | after the upload: the server's check starts (`checking`, then `ready` or `invalid`) |
-| `GET /v1/datasets`, `GET /v1/datasets/{id}` | your datasets and the sample datasets: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens` (`{model: {total, max, over: {max_seq_len: count}}}`), `errors`, `kind` (`chat`, `rl`, `preference`, `images`), `images`, `videos`, `tools`, `sample`, `validation`, `source`, `converted_from` |
+| `GET /v1/datasets`, `GET /v1/datasets/{id}` | your datasets and the sample datasets: `id`, `name`, `state`, `samples`, `est_tokens`, `too_long`, `tokens` (`{model: {total, max, over: {max_seq_len: count}}}`), `estimated` (data.md), `errors`, `kind` (`chat`, `rl`, `preference`, `images`), `images`, `videos`, `tools`, `sample`, `validation`, `source`, `converted_from` |
 | `DELETE /v1/datasets/{id}` | 409 while an unfinished job uses it |
 | `GET /v1/datasets/{id}/download` | a one-hour link to the file as training reads it |
-| `GET /v1/datasets/{id}/plan?model=&layout=&max_seq_len=&batch_size=&tokens_per_gpu=&gradient_accumulation_steps=&train_type=` | the batch a job would train with: `layout`, `gpus`, `batch` (samples a step), `pack_len`, `tokens_per_gpu`, `micro_steps`, `steps_per_epoch`, `min_batch`, `efficient`, `fits` |
+| `GET /v1/datasets/{id}/plan?model=&layout=&max_seq_len=&batch_size=&tokens_per_gpu=&gradient_accumulation_steps=&train_type=` | the batch a job would train with: `layout`, `gpus`, `batch` (samples a step), `pack_len`, `tokens_per_gpu`, `micro_steps`, `steps_per_epoch`, `min_batch`, `efficient`, `fits`; 409 for an `estimated` dataset before the model's first job |
 | `POST /v1/datasets/huggingface/splits` `{"url", "hf_token"?}` | `[{"config", "split", "rows", "bytes"}]` |
 | `POST /v1/datasets/huggingface` `{"url", "config", "split", "name"?, "hf_token"?}` | imports one split (`importing`, then `checking`) |
 

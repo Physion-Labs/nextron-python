@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc31
+
+- `Dataset.estimated`: a file over 50 MB is ready with token counts from a sample; a model's first job measures every
+  sample before it starts.
+
 ## 0.1.0rc30
 
 - `jobs.wait_checkpoint` raises when the checkpoint was deleted before its upload, instead of waiting on.

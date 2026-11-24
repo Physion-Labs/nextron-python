@@ -129,6 +129,11 @@ After its check, `dataset` has:
   `max_seq_len` a job can pick (32768, 65536, 131072, 262144, 1048576; a dataset checked before a length was added
   has no count for it). Compare `max` and `over` with the model's `max_seq_len` from `client.models()` to see what
   would be truncated.
+- `estimated`: true for a file over 50 MB. Its counts come from one sample in 100 (`tokens[model].estimated` is
+  true): `total` and `over` are scaled up, `max` is the longest sample among those. The first job on a model measures
+  every sample in that model's tokens before it starts: it stays `queued` about a minute for a few hundred MB (about
+  ten for 7 GB), then starts, or fails with the reason if the exact lengths do not pass a check the estimate passed.
+  After that `tokens[model]` is exact. Until then `jobs.estimate` returns `steps=None` for that model.
 - `converted_from`: the format it was converted from, if any. `datasets.download_url(id)` gives the file exactly as
   training reads it.
 

@@ -92,6 +92,7 @@ class Dataset(_Model):
     videos: int | None = None  # video files, likewise
     tools: bool | None = None  # has samples with tool calls (None before the check)
     converted_from: str | None = None  # the format the server converted it from, if any
+    estimated: bool = False  # a file over 50 MB: token counts from a sample until a model's first job measures them
 
     @property
     def done(self) -> bool:

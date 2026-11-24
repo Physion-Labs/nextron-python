@@ -2,10 +2,10 @@
 
 ## States
 
-`queued` (waiting for GPUs) → `submitting` → `pending` (the cluster is starting it) → `running` → `succeeded` |
-`failed` | `cancelled`. `job.done` is true for the last three: training is over. A succeeded job's checkpoint then
-uploads (`checkpoint.status` `uploading` → `ready`, `job.checkpoint_ready`); that is a separate wait
-(`jobs.wait_checkpoint`), needed only to download the weights.
+`queued` (waiting for GPUs, or for a large file's samples to be measured: data.md) → `submitting` → `pending` (the
+cluster is starting it) → `running` → `succeeded` | `failed` | `cancelled`. `job.done` is true for the last three:
+training is over. A succeeded job's checkpoint then uploads (`checkpoint.status` `uploading` → `ready`,
+`job.checkpoint_ready`); that is a separate wait (`jobs.wait_checkpoint`), needed only to download the weights.
 
 `jobs.get(id)` (not `list`) also has:
 
