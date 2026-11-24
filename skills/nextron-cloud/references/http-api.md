@@ -52,7 +52,7 @@ and `image` / `video` where they are open to your organisation), `tools` (whethe
 | `POST /v1/datasets/huggingface/splits` `{"url", "hf_token"?}` | `[{"config", "split", "rows", "bytes"}]` |
 | `POST /v1/datasets/huggingface` `{"url", "config", "split", "name"?, "hf_token"?}` | imports one split (`importing`, then `checking`) |
 
-The file format is in data.md, images and videos in media.md. Limits: 50 datasets, 5 GB a file, 20 GB a bundle.
+The file format is in data.md, images and videos in media.md. Limits: 50 datasets, 10 GB a file, 20 GB a bundle.
 
 ## Training jobs
 

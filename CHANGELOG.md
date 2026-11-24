@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0rc32
+
+- A dataset file can be up to 10 GB (was 5 GB).
+
 ## 0.1.0rc31
 
 - `Dataset.estimated`: a file over 50 MB is ready with token counts from a sample; a model's first job measures every

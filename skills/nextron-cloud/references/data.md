@@ -18,7 +18,7 @@ cap a trial with `max_steps` and show the owner the estimate.
 
 ## The format
 
-A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line and 5 GB a file.
+A dataset is a JSONL file: UTF-8, one JSON object per line, at most 32 MB a line and 10 GB a file.
 
 ```json
 {"messages": [{"role": "system", "content": "You are terse."}, {"role": "user", "content": "2+2?"}, {"role": "assistant", "content": "4"}]}
