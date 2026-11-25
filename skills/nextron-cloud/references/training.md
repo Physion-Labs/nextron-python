@@ -26,6 +26,20 @@ Longer-context versions are separate ids (for example `...-256k`) with their own
   (a model's `methods` say so). The larger models train LoRA on fewer GPUs than a full fine-tune: with `layout="auto"` the job takes the
   smallest setup that trains it.
 
+### Start from a job's model
+
+A job can train on from the model another job saved instead of from the base model: `from_job`, on every method
+(`--param from_job=job_...`) and on an RL run (`rl start --from-job job_...`). Chain them as you like: SFT then RFT,
+LoRA on a full fine-tune, a second pass on new data.
+
+```bash
+nextron-cloud jobs create --model qwen3.8-27b --dataset ds_... --method lora --param from_job=job_... --yes
+```
+
+The job must be yours, a training job of the same model that succeeded, and finished within the last 7 days (its model
+stays on the cluster that long; the new job runs there). The models with expert parallelism (120B and up) do not take
+it yet: `nextron-cloud models` shows `from_job` for each model. The price is the model's own.
+
 ## Params
 
 All optional; the server fills the rest from a tested recipe for the model.

@@ -169,7 +169,7 @@ def _rl_start(client: NexTron, args: argparse.Namespace) -> Any:
                            max_grad_norm=args.max_grad_norm, grad_clip=False if args.no_grad_clip else None,
                            idle_timeout=args.idle_timeout, images=args.images, video_fps=args.video_fps,
                            video_max_frames=args.video_max_frames, video_frame_tokens=args.video_frame_tokens,
-                           name=args.name, tags=args.tag)
+                           from_job=args.from_job, name=args.name, tags=args.tag)
 
 
 def _rl_wait(client: NexTron, args: argparse.Namespace) -> Any:
@@ -364,6 +364,7 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("--max-grad-norm", type=_positive(float), help="gradient clipping for every step (default 1.0)")
     cmd.add_argument("--no-grad-clip", action="store_true", help="no gradient clipping: a step is about 2 s shorter")
     cmd.add_argument("--idle-timeout", type=_positive(int), help="seconds without a sample or a step before it stops (default 1800)")
+    cmd.add_argument("--from-job", help="start from the model this finished training job saved, not the base model")
     cmd.add_argument("--images", action="store_true", help="prompts may hold images and videos (models whose input lists them)")
     cmd.add_argument("--video-fps", type=_positive(float), help="video frames sampled a second (Qwen: 1, 2, 4, 8, 16; default 4)")
     cmd.add_argument("--video-max-frames", type=_positive(int), help="frames a video at most (default 40 on Qwen, 32 on Gemma)")

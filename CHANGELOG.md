@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc34
+
+- `from_job`: a job (`params`) or an RL run (`rl.start(from_job=...)`, `rl start --from-job`) starts from the model a
+  finished training job saved, instead of the base model.
+
 ## 0.1.0rc33
 
 - Guide: `freeze_aligner` (`--param freeze_aligner=false`) also trains the projector between the vision tower and the

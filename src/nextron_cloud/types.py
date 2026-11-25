@@ -71,6 +71,7 @@ class ModelInfo(_Model):
     methods: dict[str, ModelMethod]  # "full", "lora", "dpo", "grpo", "interactive" (Serverless RL), "inference"
     batch_size: bool  # whether params.batch_size is accepted
     validation_set: bool  # whether params.val_dataset_id is accepted
+    from_job: bool = False  # a job or RL run of it can start from a finished job's model (params.from_job)
     layouts: dict[str, ModelLayout]
 
 
@@ -383,6 +384,8 @@ class TrainingParams(TypedDict, total=False):
     seed: int
     val_dataset_id: str
     eval_steps: int
+    # a finished training job of the same model: train on from the model it saved, not from the base model
+    from_job: str
     # grpo only: max_steps rounds of batch_size prompts, num_generations completions each
     reward: Literal["boxed", "exact", "remote"]
     num_generations: int

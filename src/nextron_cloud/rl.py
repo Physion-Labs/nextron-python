@@ -29,13 +29,14 @@ class RL:
     def start(self, *, model: str, max_hours: float, max_context: int | None = None, max_grad_norm: float | None = None,
               grad_clip: bool | None = None, idle_timeout: int | None = None, images: bool = False,
               video_fps: float | None = None, video_max_frames: int | None = None, video_frame_tokens: int | None = None,
-              name: str | None = None, tags: builtins.list[str] | None = None) -> RLRun:
+              from_job: str | None = None, name: str | None = None, tags: builtins.list[str] | None = None) -> RLRun:
         """Queue an RL run. It stops itself after `max_hours`, or after `idle_timeout` seconds without a sample or a
         training step. `max_context` (tokens) bounds a prompt with its reply, and a training sequence. Gradients are
         clipped at `max_grad_norm` (1.0); `grad_clip=False` turns clipping off, which makes a step about 2 s shorter.
         With `images` its prompts may hold images (the models whose `input` lists "image"), and videos sampled as
-        `video_fps`, `video_max_frames` and `video_frame_tokens` say (the model's defaults when unset; see the guide)."""
-        settings = {"max_context": max_context, "max_grad_norm": max_grad_norm, "grad_clip": grad_clip,
+        `video_fps`, `video_max_frames` and `video_frame_tokens` say (the model's defaults when unset; see the guide).
+        With `from_job` it starts from the model that training job saved instead of the base model."""
+        settings = {"from_job": from_job, "max_context": max_context, "max_grad_norm": max_grad_norm, "grad_clip": grad_clip,
                     "idle_timeout": idle_timeout, "images": images or None, "video_fps": video_fps,
                     "video_max_frames": video_max_frames, "video_frame_tokens": video_frame_tokens, "name": name, "tags": tags}
         body: dict[str, Any] = {"model": model, "max_hours": max_hours}
