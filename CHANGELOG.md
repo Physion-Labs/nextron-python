@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc38
+
+- Fix: a dataset with tool calls could not be read (`datasets.upload`, `get` and `list` raised a validation error):
+  `Dataset.tools` is the number of samples with tool calls, as the service returns it.
+
 ## 0.1.0rc37
 
 - Docs: `from_job` also takes an RL run (`rl_...`), so a job or an RL run can start from the model an earlier RL run

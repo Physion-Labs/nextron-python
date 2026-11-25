@@ -91,7 +91,7 @@ class Dataset(_Model):
     kind: Literal["chat", "rl", "preference", "images"] = "chat"  # rl: prompts with answers (grpo); preference: pairs (dpo); images: media for an RL run
     images: int | None = None  # image files of a dataset uploaded with images; None for a text dataset
     videos: int | None = None  # video files, likewise
-    tools: bool | None = None  # has samples with tool calls (None before the check)
+    tools: int | None = None  # samples with tool calls (None before the check)
     converted_from: str | None = None  # the format the server converted it from, if any
     estimated: bool = False  # a file over 50 MB: token counts from a sample until a model's first job measures them
 

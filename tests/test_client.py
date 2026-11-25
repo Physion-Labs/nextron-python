@@ -77,6 +77,11 @@ def test_upload_packs_no_bundle_for_a_file_without_images(make_client, monkeypat
     assert make_client(handler).datasets.upload(path).state == "checking"
 
 
+def test_a_dataset_with_tool_calls_is_read(make_client):
+    dataset = {"id": "ds_1", "name": "tools.jsonl", "bytes": 1, "created": 1.0, "state": "ready", "tools": 256}
+    assert make_client(lambda request: httpx.Response(200, json=dataset)).datasets.get("ds_1").tools == 256
+
+
 def test_upload_refuses_a_bad_file_before_sending_it(make_client, tmp_path: Path):
     path = tmp_path / "bad.jsonl"
     path.write_text(json.dumps({"text": "no assistant turn"}) + "\n")
