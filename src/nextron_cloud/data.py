@@ -314,6 +314,9 @@ def _media_parts(sample: Any) -> Iterator[tuple[list[Any], int, str, str]]:
                 yield parts, i, media[0], media[1]
 
 
+TOOLS_MEDIA_ERROR = "has tool calls; samples with tools and images or videos are not taken yet"
+
+
 def is_tool_sample(sample: Any) -> bool:
     """Whether the sample has tools, tool calls or tool results in any of the formats to_tool_chat takes."""
     if not isinstance(sample, dict):
@@ -522,8 +525,6 @@ def to_messages(sample: Any, images: list[str] | None = None) -> list[Message]:
         raise ValueError("is a JSON array; upload JSONL: one JSON object per line")
     if not isinstance(sample, dict):
         raise ValueError("is not a JSON object")
-    if is_tool_sample(sample):   # chat samples with tools go through to_tool_chat
-        raise ValueError("has tools or tool calls, which only chat (SFT) samples take, not RL prompts or preference pairs")
     if any(sample.get(f) for f in MEDIA_FIELDS):
         raise ValueError(MEDIA_ERROR)
     tags = images is not None   # the trainer reads a media tag anywhere in a sample of a file with images
@@ -581,24 +582,43 @@ def is_rl(sample: Any) -> bool:
 
 
 def to_rl(sample: dict[str, Any], images: list[str] | None = None) -> dict[str, Any]:
-    """An RL sample as {"messages", "answer"}. ValueError says why it cannot be used. `images`: as in `to_messages`."""
+    """An RL sample as {"messages", "answer"} (with "tools" if it has them). ValueError says why it cannot be used.
+    `images`: as in `to_messages`."""
     answer = sample["answer"]
     if isinstance(answer, (int, float)) and not isinstance(answer, bool):  # math sets often store numbers
         answer = str(answer)
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError('needs a non-empty "answer" string: what the reward compares the model\'s output with')
-    if "messages" in sample:
-        source = sample["messages"]
-        if not isinstance(source, list) or not source or not isinstance(source[-1], dict) or source[-1].get("role") != "user":
-            raise ValueError("an RL sample's messages end with the user's turn: the model writes the reply")
-        chat = {**sample, "messages": source + [{"role": "assistant", "content": "-"}]}
+    if is_tool_sample(sample):
+        if any(_media_parts(sample)):
+            raise ValueError(TOOLS_MEDIA_ERROR)
+        prompt = sample["messages"] if "messages" in sample else [{"role": "user", "content": sample["prompt"]}]
+        row = {**_tool_prompt(sample, prompt, {"role": "assistant", "content": "-"})[0], "answer": answer}
     else:
-        chat = {**sample, "completion": "-"}
-    # Checked as a chat with a placeholder reply, so prompts follow the same rules as chat samples.
-    row = {"messages": _prompt_of(chat, images), "answer": answer}
+        if "messages" in sample:
+            source = sample["messages"]
+            if not isinstance(source, list) or not source or not isinstance(source[-1], dict) or source[-1].get("role") != "user":
+                raise ValueError("an RL sample's messages end with the user's turn: the model writes the reply")
+            chat = {**sample, "messages": source + [{"role": "assistant", "content": "-"}]}
+        else:
+            chat = {**sample, "completion": "-"}
+        # Checked as a chat with a placeholder reply, so prompts follow the same rules as chat samples.
+        row = {"messages": _prompt_of(chat, images), "answer": answer}
     if "metadata" in sample:  # anything else a remote reward needs (test cases, rubric), passed to it unchanged
         row["metadata"] = sample["metadata"]
     return row
+
+
+def _tool_prompt(sample: dict[str, Any], prompt: Any, reply: Any) -> tuple[dict[str, Any], Message]:
+    """The prompt of an RL or preference sample with tools as {"messages", "tools"}, and `reply` (an assistant message,
+    which may hold tool calls) as to_tool_chat converts it after that prompt. The prompt may end with a tool's result."""
+    if not isinstance(prompt, list):
+        raise ValueError('needs a non-empty "messages" list')
+    row = to_tool_chat({**sample, "messages": prompt + [reply]})
+    messages = row["messages"]
+    if len(messages) < 2 or messages[-2]["role"] not in ("user", "tool") or not messages[-2]["content"].strip():
+        raise ValueError("the prompt ends with a non-empty user's turn or tool's result: the model writes the reply")
+    return {"messages": messages[:-1], "tools": row["tools"]}, messages[-1]
 
 
 def is_preference(sample: Any) -> bool:
@@ -628,7 +648,8 @@ def _prompt_of(chat: dict[str, Any], images: list[str] | None = None) -> list[Me
 
 
 def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
-    """A DPO sample as {"messages", "chosen", "rejected"}. ValueError says why it cannot be used."""
+    """A DPO sample as {"messages", "chosen", "rejected"} (with "tools" if it has them: a reply may then be tool calls).
+    ValueError says why it cannot be used."""
     chosen, rejected = sample["chosen"], sample["rejected"]
     if "messages" in sample or "prompt" in sample:
         prompt = sample.get("messages", sample.get("prompt"))
@@ -638,6 +659,17 @@ def to_preference(sample: dict[str, Any]) -> dict[str, Any]:
     else:
         raise ValueError('a preference sample needs "messages" or "prompt" with "chosen" and "rejected", or two '
                          '"chosen" / "rejected" conversations that differ only in their last reply')
+    replies = [value[0] if isinstance(value, list) and len(value) == 1 else value for value in (chosen, rejected)]
+    if isinstance(prompt, list) and is_tool_sample({**sample, "messages": prompt + [r for r in replies if isinstance(r, dict)]}):
+        row: dict[str, Any] = {}
+        for key, value in zip(("chosen", "rejected"), replies):
+            value = {"role": "assistant", "content": value} if isinstance(value, str) else value
+            if not isinstance(value, dict) or value.get("role") != "assistant":
+                raise ValueError(f'"{key}" must be the assistant\'s reply')
+            converted, row[key] = _tool_prompt(sample, prompt, value)
+            if not row[key]["content"].strip() and not row[key].get("tool_calls"):
+                raise ValueError(f'needs a non-empty "{key}" reply')
+        return row | converted
     if not isinstance(prompt, list) or not prompt or not isinstance(prompt[-1], dict) or prompt[-1].get("role") != "user":
         raise ValueError("a preference sample's prompt ends with the user's turn: the replies answer it")
     chosen, rejected = _reply(chosen, "chosen"), _reply(rejected, "rejected")
@@ -654,7 +686,7 @@ def to_sample(sample: Any, images: list[str] | None = None) -> dict[str, Any]:
         return to_preference(sample)
     if is_tool_sample(sample):
         if any(_media_parts(sample)):
-            raise ValueError("has tool calls; samples with tools and images or videos are not taken yet")
+            raise ValueError(TOOLS_MEDIA_ERROR)
         return to_tool_chat(sample)
     return {"messages": to_messages(sample, images)}
 

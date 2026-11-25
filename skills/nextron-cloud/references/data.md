@@ -175,4 +175,7 @@ except Think). A job on another model refuses a dataset with tool calls.
   `function_calls` as Python calls, `environment` results; Olmo trains on these exactly as written), ShareGPT tool
   rows (`function_call` and `observation` turns, with `tools`) and Hermes rows (`<tool_call>` JSON in the assistant's
   text, tools in the system's `<tools>...</tools>`).
-- Not yet: tools in RL prompts (RFT, Serverless RL datasets) and DPO pairs, or in samples with images or videos.
+- RFT prompts and DPO pairs take `tools` the same way (on the models that take tools). The prompt may end with a
+  tool's result instead of the user's turn, and a DPO reply may be an assistant message with `tool_calls`:
+  `{"tools": [...], "messages": [...], "chosen": {"role": "assistant", "tool_calls": [...]}, "rejected": "..."}`.
+- Not yet: tools in a Serverless RL run's prompts, or in samples with images or videos.

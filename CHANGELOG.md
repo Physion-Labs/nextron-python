@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc39
+
+- RFT prompts and DPO pairs may have `tools`: the prompt may end with a tool's result, a DPO reply may be tool calls.
+  The local check refused such samples before.
+
 ## 0.1.0rc38
 
 - Fix: a dataset with tool calls could not be read (`datasets.upload`, `get` and `list` raised a validation error):

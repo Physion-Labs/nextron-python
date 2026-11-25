@@ -311,6 +311,15 @@ def test_tool_samples_become_openai_messages_with_tools(sample):
     assert row["tools"] == [{"type": "function", "function": WEATHER}] and ("ai2" in row) == (sample is DOLCI)
 
 
+def test_rl_prompts_and_preference_pairs_take_tools():
+    prompt, call = CALL["messages"][:1], to_sample(CALL)["messages"][1]
+    rl = to_sample({"tools": CALL["tools"], "messages": CALL["messages"][:3], "answer": 18})   # ends with the tool's result
+    assert rl == {"messages": to_sample(CALL)["messages"][:3], "tools": CALL["tools"], "answer": "18"}
+    pair = to_sample({"tools": CALL["tools"], "messages": prompt, "chosen": CALL["messages"][1], "rejected": "I cannot look that up."})
+    assert pair == {"chosen": call, "rejected": {"role": "assistant", "content": "I cannot look that up."},
+                    "messages": prompt, "tools": CALL["tools"]}
+
+
 def test_check_file_refuses_a_call_to_an_unknown_tool(tmp_path: Path):
     bad = {**CALL, "tools": [{"type": "function", "function": {"name": "get_time"}}]}
     path = tmp_path / "tools.jsonl"
