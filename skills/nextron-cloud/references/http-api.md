@@ -97,7 +97,7 @@ All optional. "Model's" means the model's template: `GET /v1/models` shows it un
 | `lora_alpha` | 64 | 1-512 | lora |
 | `lora_dropout` | model's | 0-0.5 | lora |
 | `freeze_aligner` | true | false also trains the projector between the vision tower and the language model, in full; on the models whose `input` lists `image` | full, lora |
-| `from_job` | | a finished training job of the same model, or an uploaded checkpoint (`ckpt_...`): start from its model (training.md) | all |
+| `from_job` | | a finished training job or RL run of the same model, or an uploaded checkpoint (`ckpt_...`): start from its model (training.md) | all |
 | `val_dataset_id` | | a ready dataset of at most 5,000 samples, text only | full, lora |
 | `eval_steps` | about 10 evaluations | steps between validation passes | full, lora |
 | `video_fps`, `video_max_frames`, `video_frame_tokens` | the model's | media.md | full, lora, grpo |

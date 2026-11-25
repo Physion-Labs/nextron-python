@@ -71,7 +71,7 @@ class ModelInfo(_Model):
     methods: dict[str, ModelMethod]  # "full", "lora", "dpo", "grpo", "interactive" (Serverless RL), "inference"
     batch_size: bool  # whether params.batch_size is accepted
     validation_set: bool  # whether params.val_dataset_id is accepted
-    from_job: bool = False  # a job or RL run of it can start from a finished job's model (params.from_job)
+    from_job: bool = False  # a job or RL run of it can start from a finished job's or RL run's model (params.from_job)
     layouts: dict[str, ModelLayout]
 
 

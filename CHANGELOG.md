@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc37
+
+- Docs: `from_job` also takes an RL run (`rl_...`), so a job or an RL run can start from the model an earlier RL run
+  saved. No code change: any version sends the id as given.
+
 ## 0.1.0rc36
 
 - `client.checkpoints.upload(directory, model=...)` and `nextron-cloud checkpoints upload|list|delete`: upload a

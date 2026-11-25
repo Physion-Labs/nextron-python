@@ -35,7 +35,8 @@ class RL:
         clipped at `max_grad_norm` (1.0); `grad_clip=False` turns clipping off, which makes a step about 2 s shorter.
         With `images` its prompts may hold images (the models whose `input` lists "image"), and videos sampled as
         `video_fps`, `video_max_frames` and `video_frame_tokens` say (the model's defaults when unset; see the guide).
-        With `from_job` it starts from the model that training job saved instead of the base model."""
+        With `from_job` it starts from the model that training job or RL run saved, or from an uploaded checkpoint, instead
+        of the base model."""
         settings = {"from_job": from_job, "max_context": max_context, "max_grad_norm": max_grad_norm, "grad_clip": grad_clip,
                     "idle_timeout": idle_timeout, "images": images or None, "video_fps": video_fps,
                     "video_max_frames": video_max_frames, "video_frame_tokens": video_frame_tokens, "name": name, "tags": tags}
