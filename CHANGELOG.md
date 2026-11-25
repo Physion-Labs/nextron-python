@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc33
+
+- Guide: `freeze_aligner` (`--param freeze_aligner=false`) also trains the projector between the vision tower and the
+  language model on the models that train on images (`full` and `lora`; the default keeps it frozen).
+
 ## 0.1.0rc32
 
 - A dataset file can be up to 10 GB (was 5 GB).

@@ -49,6 +49,7 @@ All optional; the server fills the rest from a tested recipe for the model.
 | `tokens_per_gpu` | the model's `max_tokens_per_gpu` | each GPU's packed row a micro-step: 8,192 up to `max_tokens_per_gpu`, and at least the dataset's longest sample. Not with `batch_size` |
 | `gradient_accumulation_steps` | 1 | 1-64 micro-steps an optimizer step. Not with `batch_size` |
 | `lora_rank`, `lora_alpha`, `lora_dropout` | 32, 64, the model's | LoRA only: rank 1-128, alpha 1-512, dropout 0-0.5 |
+| `freeze_aligner` | true | `false` also trains the projector between the vision tower and the language model (in full, also beside LoRA adapters; the vision tower stays frozen). On the models that train on images, `full` and `lora` |
 | `engine_debug_log` | false | also log the engine's setup details (kernels, memory layout, packing); for debugging |
 
 `wandb={"api_key": ..., "project": ..., "entity": ..., "run_name": ...}` also logs to the owner's Weights & Biases
