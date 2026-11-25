@@ -49,6 +49,8 @@ connections. Reads, job creation and cancel are retried on connection errors and
 | `jobs.metrics(id)` | `list[MetricPoint]`: `step`, `total_steps`, `loss`, `val_loss`, `lr`, `step_time_s`, `tokens_per_s_per_gpu`, `tokens_per_s_total`, `ts`, and `samples`, `real_tokens`, `trained_tokens`, `padding_tokens` (see monitoring.md); GRPO adds `reward_mean`, `zero_variance_fraction`, `completion_length_mean`, `generation_s`, `round_time_s` (rl.md) |
 | `jobs.cancel(id)` | queued: cancelled now; running: stops soon, no checkpoint |
 | `jobs.checkpoint(id)` | `Checkpoint`: `step`, `bytes`, `expires`, `files` (`name`, `bytes`, `sha256`, `url`) |
+| `checkpoints.upload(directory, model, name=None)` | sends the directory's `.safetensors` files; returns an `UploadedCheckpoint` in `ready` whose `id` is a `from_job`; `NexTronError` with the tensors that differ when the weights are not the model's |
+| `checkpoints.list()`, `checkpoints.get(id)`, `checkpoints.delete(id)` | uploaded checkpoints: `state`, `bytes`, `expires` (30 days after upload) |
 | `jobs.download_checkpoint(id, dest, include=None)` | downloads into `dest` (only files matching the `include` globs), resumes partial files, checks each sha256; 409 while uploading |
 | `jobs.export(id, dest)` | the job record as a zip |
 | `jobs.manifest(id)`, `jobs.trace(id)`, `jobs.telemetry(id)` | sha256 manifest (bytes), per-rank Chrome trace (bytes), GPU/host utilisation (dict) |

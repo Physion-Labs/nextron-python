@@ -303,6 +303,17 @@ def _parser() -> argparse.ArgumentParser:
     cmd.add_argument("dataset_id")
     cmd.set_defaults(run=lambda c, a: c.datasets.delete(a.dataset_id))
 
+    uploads = groups.add_parser("checkpoints", help="upload model weights to start jobs from").add_subparsers(dest="cmd", required=True)
+    cmd = uploads.add_parser("upload", help="send a directory's .safetensors files; --param from_job=<its id> starts a job from them")
+    cmd.add_argument("directory")
+    cmd.add_argument("--model", required=True, help="the model the weights are of (same tensor names and shapes)")
+    cmd.add_argument("--name")
+    cmd.set_defaults(run=lambda c, a: c.checkpoints.upload(a.directory, model=a.model, name=a.name))
+    uploads.add_parser("list").set_defaults(run=lambda c, a: c.checkpoints.list())
+    cmd = uploads.add_parser("delete")
+    cmd.add_argument("checkpoint_id")
+    cmd.set_defaults(run=lambda c, a: c.checkpoints.delete(a.checkpoint_id))
+
     jobs = groups.add_parser("jobs", help="estimate, start and watch training jobs").add_subparsers(dest="cmd", required=True)
     for name in ("estimate", "create"):
         cmd = jobs.add_parser(name, help="cost of a job" if name == "estimate" else "estimate, then start with --yes")

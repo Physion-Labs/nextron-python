@@ -85,6 +85,31 @@ def test_upload_refuses_a_bad_file_before_sending_it(make_client, tmp_path: Path
         client.datasets.upload(path)
 
 
+def test_a_checkpoint_upload_sends_each_files_parts_and_raises_what_the_check_found(make_client, tmp_path: Path):
+    (tmp_path / "a.safetensors").write_bytes(b"x" * 25)
+    (tmp_path / "config.json").write_text("{}")   # only the weights are sent
+    sent, checkpoint = {}, {"id": "ckpt_1", "model": "qwen3.8-27b", "name": "mine", "state": "ready", "bytes": 25, "created": 1.0}
+
+    def handler(request):
+        if request.url.path == "/v1/checkpoints":
+            assert body(request) == {"model": "qwen3.8-27b", "name": tmp_path.name, "files": [{"name": "a.safetensors", "bytes": 25}]}
+            return httpx.Response(201, json=checkpoint | {"state": "uploading", "part_bytes": 10})
+        if request.url.path.endswith("/parts"):
+            assert body(request) == {"name": "a.safetensors", "parts": [1, 2, 3]}
+            return httpx.Response(200, json={"urls": [f"https://r2.test/{n}" for n in (1, 2, 3)]})
+        if request.url.host == "r2.test":
+            sent[request.url.path] = len(request.content)
+            return httpx.Response(200)
+        return httpx.Response(200, json=checkpoint)
+
+    client = make_client(handler)
+    assert client.checkpoints.upload(tmp_path, model="qwen3.8-27b").id == "ckpt_1"
+    assert sent == {"/1": 10, "/2": 10, "/3": 5}
+    checkpoint |= {"state": "invalid", "errors": ["3 tensors are not the model's: a, b, c"]}
+    with pytest.raises(NexTronError, match="not a checkpoint of qwen3.8-27b: 3 tensors"):
+        client.checkpoints.upload(tmp_path, model="qwen3.8-27b")
+
+
 def test_logs_follow_pages_until_the_job_ends(make_client):
     pages = [[{"seq": 1, "ts": 1.0, "line": "a"}, {"seq": 2, "ts": 1.0, "line": "b"}], [], [{"seq": 3, "ts": 2.0, "line": "c"}], [], [{"seq": 4, "ts": 3.0, "line": "d"}], []]
     states = ["running", "succeeded"]

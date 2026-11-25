@@ -356,6 +356,21 @@ class LogLine(_Model):
     line: str
 
 
+class UploadedCheckpoint(_Model):
+    """Weights uploaded to start jobs from (`from_job` takes its id)."""
+
+    id: str
+    model: str
+    name: str
+    state: Literal["uploading", "ready", "invalid"]
+    bytes: int
+    created: float
+    uploaded: float | None = None
+    expires: float | None = None  # a ready checkpoint is kept 30 days after its upload
+    errors: list[str] = []  # why an invalid one is not the model's weights
+    files: list[dict[str, Any]] = []
+
+
 class CheckpointFile(_Model):
     name: str
     bytes: int

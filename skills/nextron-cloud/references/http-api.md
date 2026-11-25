@@ -97,7 +97,7 @@ All optional. "Model's" means the model's template: `GET /v1/models` shows it un
 | `lora_alpha` | 64 | 1-512 | lora |
 | `lora_dropout` | model's | 0-0.5 | lora |
 | `freeze_aligner` | true | false also trains the projector between the vision tower and the language model, in full; on the models whose `input` lists `image` | full, lora |
-| `from_job` | | a finished training job of the same model: start from its model (training.md) | all |
+| `from_job` | | a finished training job of the same model, or an uploaded checkpoint (`ckpt_...`): start from its model (training.md) | all |
 | `val_dataset_id` | | a ready dataset of at most 5,000 samples, text only | full, lora |
 | `eval_steps` | about 10 evaluations | steps between validation passes | full, lora |
 | `video_fps`, `video_max_frames`, `video_frame_tokens` | the model's | media.md | full, lora, grpo |
@@ -124,6 +124,10 @@ refused with the reason.
 | `GET /v1/training/jobs/{id}/logs?cursor=&limit=` | `{lines: [{seq, ts, line}], next_cursor}`; pass `next_cursor` back as `cursor` |
 | `GET /v1/training/jobs/{id}/billing` | `billing` (`held`, `settled`, `released`, `not_metered`), `held_credits`, `charged_credits`, `price_per_mtok`, `tokens_charged`, `settled_at` |
 | `POST /v1/training/jobs/{id}/cancel` | queued: cancelled now; running: stops soon, no checkpoint; charged for the tokens trained |
+| `POST /v1/checkpoints` `{"model", "name", "files": [{"name", "bytes"}]}` | starts the upload of a model's weights (`.safetensors` files): `id`, `part_bytes`. 403 until open to the organisation |
+| `POST /v1/checkpoints/{id}/parts` `{"name", "parts": [1, 2, ...]}` | `urls`: one to `PUT` each of those parts of the file to (`part_bytes` each, the last one shorter), good for 30 minutes |
+| `POST /v1/checkpoints/{id}/complete` | joins the parts and checks the tensors against the model: `state` `ready`, or `invalid` with `errors` |
+| `GET /v1/checkpoints[/{id}]`, `DELETE /v1/checkpoints/{id}` | uploaded checkpoints; one is kept 30 days after its upload (`expires`) |
 | `GET /v1/training/jobs/{id}/checkpoint` | `step`, `bytes`, `expires`, `files` (`name`, `bytes`, `sha256`, `url`: a 24-hour link). 409 while uploading, 410 after 30 days |
 | `GET /v1/training/jobs/{id}/manifest`, `.../export`, `.../trace`, `.../telemetry` | the sha256 manifest, the job record as a zip, a per-rank Chrome trace, GPU and host utilisation |
 | `GET /v1/training/jobs/{id}/rollouts`, `POST .../rollouts/{batch_id}/scores` `{"scores": [...]}` | remote-reward grpo: the batch waiting for scores, and its scores (rl.md) |

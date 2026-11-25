@@ -61,6 +61,31 @@ model lists `inference` in `client.models()[i].methods` ([inference.md](inferenc
 after the 7 days, say so to the owner; validation loss (`val_loss` in the job's metrics) is then the comparison
 between runs.
 
+## Upload a checkpoint to train from
+
+Weights trained somewhere else, or downloaded from a job, can be where a job starts: upload the directory's
+`.safetensors` files, then give the checkpoint's id as `from_job` ([training.md](training.md)).
+
+```bash
+nextron-cloud checkpoints upload ./my-model --model qwen3.8-27b       # -> ckpt_...
+nextron-cloud jobs create --model qwen3.8-27b --dataset ds_... --param from_job=ckpt_... --yes
+```
+
+```python
+checkpoint = client.checkpoints.upload("./my-model", model="qwen3.8-27b")
+job = client.jobs.create(model="qwen3.8-27b", dataset_id=dataset.id, params={"from_job": checkpoint.id})
+```
+
+- The weights must be the model's own: every tensor of the base model, same name and shape, in float32 or bfloat16.
+  A LoRA adapter, a quantized model or one with added tokens is refused, and the error names the tensors that
+  differ. Merge an adapter into the base weights first.
+- Only the weights are sent. Config, tokenizer and chat template stay the base model's.
+- For the models that list `from_job` (`nextron-cloud models`), and opened organisation by organisation: a 403 means
+  yours is not open yet.
+- A checkpoint is kept 30 days after its upload, five at a time, at no charge: `nextron-cloud checkpoints list`,
+  `checkpoints delete ckpt_...`.
+- An inference run does not serve an uploaded checkpoint; it serves a job that trained from one.
+
 ## Verifying a checkpoint
 
 `download_checkpoint` already checks each file against the checkpoint's sha256 list. Independently of the download

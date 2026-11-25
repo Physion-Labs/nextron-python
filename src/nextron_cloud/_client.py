@@ -63,11 +63,13 @@ class NexTron:
         self._timeout = timeout
         self.max_retries = max_retries
 
+        from .checkpoints import Checkpoints
         from .datasets import Datasets
         from .jobs import Jobs
         from .inference import Inference
         from .rl import RL
         self.datasets = Datasets(self)
+        self.checkpoints = Checkpoints(self)
         self.jobs = Jobs(self)
         self.rl = RL(self)
         self.inference = Inference(self)

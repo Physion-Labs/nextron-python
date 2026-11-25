@@ -36,8 +36,8 @@ LoRA on a full fine-tune, a second pass on new data.
 nextron-cloud jobs create --model qwen3.8-27b --dataset ds_... --method lora --param from_job=job_... --yes
 ```
 
-The job must be yours, a training job of the same model that succeeded, and its checkpoint must still be stored (30
-days after training). In the first 7 days the model is still on the cluster that trained it and the new job starts at
+`from_job` also takes a checkpoint you uploaded (`ckpt_...`, [checkpoints.md](checkpoints.md)). A job must be yours,
+a training job of the same model that succeeded, and its checkpoint must still be stored (30 days after training). In the first 7 days the model is still on the cluster that trained it and the new job starts at
 once; after that it is fetched from storage first, which takes some minutes and is not billed. The models with expert
 parallelism (120B and up) do not take it yet: `nextron-cloud models` shows `from_job` for each model. The price is the
 model's own.

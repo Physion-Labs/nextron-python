@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc36
+
+- `client.checkpoints.upload(directory, model=...)` and `nextron-cloud checkpoints upload|list|delete`: upload a
+  model's weights (`.safetensors`) and start jobs from them with `from_job=ckpt_...`. Opened per organisation.
+
 ## 0.1.0rc35
 
 - Guide: `from_job` takes a job for as long as its checkpoint is stored (30 days), not only the 7 days its model

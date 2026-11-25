@@ -28,7 +28,7 @@ e.g. `nextron-cloud guide data`; this page is `nextron-cloud guide`):
 | build, convert and check data; what is trained on | [references/data.md](references/data.md) |
 | images and videos: models, format, video settings, cost | [references/media.md](references/media.md) |
 | watch a job, read its metrics, fix a failure | [references/monitoring.md](references/monitoring.md) |
-| download, serve and evaluate the checkpoint | [references/checkpoints.md](references/checkpoints.md) |
+| download, serve and evaluate the checkpoint; upload weights to train from | [references/checkpoints.md](references/checkpoints.md) |
 | reinforcement fine-tuning (RFT, a GRPO job): prompts with answers, built-in rewards | [references/rl.md](references/rl.md) |
 | preference training (a DPO job): prompts with a chosen and a rejected reply | [references/dpo.md](references/dpo.md) |
 | Serverless RL: your own RL loop (this SDK's `sample` / `train`, or the tinker SDK) on NexCloud's GPUs, billed by time | [references/serverless-rl.md](references/serverless-rl.md) |
