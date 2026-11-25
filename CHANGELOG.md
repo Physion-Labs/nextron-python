@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc35
+
+- Guide: `from_job` takes a job for as long as its checkpoint is stored (30 days), not only the 7 days its model
+  stays on the cluster.
+
 ## 0.1.0rc34
 
 - `from_job`: a job (`params`) or an RL run (`rl.start(from_job=...)`, `rl start --from-job`) starts from the model a
