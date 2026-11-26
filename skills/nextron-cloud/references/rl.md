@@ -24,6 +24,8 @@ One kind per dataset: prompts with answers.
 ```
 
 - `answer` is a non-empty string (a number is kept as its text). With `messages`, the last message is the user's.
+- With `tools` ([data.md](data.md), on the models that take them) the messages may hold tool calls and results, and
+  may end with a tool's result.
 - From columns: `nextron-cloud datasets prepare data.csv --prompt-column question --answer-column final`.
 - `check_file` reports `kind="rl"`; after upload `dataset.kind == "rl"` and `dataset.tokens[model]["max"]` is the
   longest prompt. It must be at most the method's `max_prompt_len`.

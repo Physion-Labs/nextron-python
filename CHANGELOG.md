@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc40
+
+- Docs: tools in RFT prompts and DPO pairs in rl.md and dpo.md; data.md no longer says a Serverless RL run's prompts
+  take no tools (they do, in `live.sample`).
+
 ## 0.1.0rc39
 
 - RFT prompts and DPO pairs may have `tools`: the prompt may end with a tool's result, a DPO reply may be tool calls.

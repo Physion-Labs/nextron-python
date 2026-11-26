@@ -178,4 +178,5 @@ except Think). A job on another model refuses a dataset with tool calls.
 - RFT prompts and DPO pairs take `tools` the same way (on the models that take tools). The prompt may end with a
   tool's result instead of the user's turn, and a DPO reply may be an assistant message with `tool_calls`:
   `{"tools": [...], "messages": [...], "chosen": {"role": "assistant", "tool_calls": [...]}, "rejected": "..."}`.
-- Not yet: tools in a Serverless RL run's prompts, or in samples with images or videos.
+- A Serverless RL run takes tools in the prompts you sample ([serverless-rl.md](serverless-rl.md)).
+- Not yet: tools in samples with images or videos.

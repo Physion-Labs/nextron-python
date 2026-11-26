@@ -17,6 +17,8 @@ One kind per dataset: preference pairs, in any of these forms.
 
 - The prompt ends with the user's turn; both replies are non-empty. The last form is two conversations that differ only
   in their last reply (UltraFeedback, HH-RLHF style).
+- With `tools` ([data.md](data.md), on the models that take them) the prompt may end with a tool's result and a reply
+  may be an assistant message with `tool_calls`: prefer the right call over a wrong one, or over no call.
 - `check_file` reports `kind="preference"`; after upload `dataset.kind == "preference"` and
   `dataset.tokens[model]["max"]` is the longest pair: the prompt twice and both replies. It must be at most the method's
   `max_seq_len`.
