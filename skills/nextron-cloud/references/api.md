@@ -5,7 +5,7 @@ from nextron_cloud import NexTron, APIError, check_file, to_messages, write_json
 client = NexTron(api_key=None, base_url=None, org=None, timeout=60.0, max_retries=3)
 ```
 
-`api_key` defaults to `NEXTRON_API_KEY`, `base_url` to `NEXTRON_BASE_URL` or https://nextron.physionlabs.ai. `org`
+`api_key` defaults to `NEXTRON_API_KEY`, `base_url` to `NEXTRON_BASE_URL` or https://nexcloud.physionlabs.ai. `org`
 picks an organisation when a login belongs to several (keys belong to one). Use `with NexTron() as client:` to close
 connections. Reads, job creation and cancel are retried on connection errors and 429/502/503/504; other errors raise
 `APIError` (`status_code`, `code`, `message`, `body`). Responses are pydantic models; unknown fields are kept.

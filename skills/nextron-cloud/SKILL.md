@@ -48,7 +48,7 @@ Use uv, not plain pip. Commands in this guide are written `nextron-cloud ...`: r
 (Python as `uv run python ...`), or activate `.venv` first.
 
 No key yet: accounts are by invitation (ask Physion Labs, support@physionlabs.ai). The owner signs in at
-https://nextron.physionlabs.ai, opens **API keys** (only an organisation owner can create one) and adds credit under
+https://nexcloud.physionlabs.ai, opens **API keys** (only an organisation owner can create one) and adds credit under
 **Billing**. Never print the key or write it into files you commit.
 
 ## Rules

@@ -10,7 +10,7 @@ import httpx
 from ._version import __version__
 from .types import Account, Layout, ModelInfo
 
-DEFAULT_BASE_URL = "https://nextron.physionlabs.ai"
+DEFAULT_BASE_URL = "https://nexcloud.physionlabs.ai"
 RETRY_STATUS = (429, 502, 503, 504)
 T = TypeVar("T")
 

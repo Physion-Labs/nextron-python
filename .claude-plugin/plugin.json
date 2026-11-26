@@ -3,7 +3,7 @@
   "description": "Fine-tune open models on NexCloud: data preparation, uploads, training jobs and checkpoints.",
   "version": "0.1.0",
   "author": { "name": "Physion Labs", "email": "support@physionlabs.ai" },
-  "homepage": "https://nextron.physionlabs.ai",
+  "homepage": "https://nexcloud.physionlabs.ai",
   "repository": "https://github.com/Physion-Labs/nextron-python",
   "license": "Apache-2.0",
   "keywords": ["nextron", "fine-tuning", "sft", "lora", "llm"]

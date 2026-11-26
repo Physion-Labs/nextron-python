@@ -6,7 +6,7 @@ inference.md.
 
 ## Basics
 
-- Base URL: `https://nextron.physionlabs.ai`. Every path below starts with `/v1`.
+- Base URL: `https://nexcloud.physionlabs.ai`. Every path below starts with `/v1`.
 - Authentication: `Authorization: Bearer nk_live_...` (an API key from the console's **API keys** page; a key belongs to
   one organisation).
 - Requests and responses are JSON. Money is in **US cents**, times are **Unix seconds**, sizes are **bytes**.

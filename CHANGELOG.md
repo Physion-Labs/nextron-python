@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0rc41
+
+- The default base URL is `https://nexcloud.physionlabs.ai`, the console's new address. The older
+  `https://nextron.physionlabs.ai` keeps serving the API, so earlier versions and a set `NEXTRON_BASE_URL` still work.
+
 ## 0.1.0rc40
 
 - Docs: tools in RFT prompts and DPO pairs in rl.md and dpo.md; data.md no longer says a Serverless RL run's prompts

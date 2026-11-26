@@ -7,7 +7,7 @@
 
 > **Release candidate.** The API may still change before 0.1.0; install with `--prerelease=allow`.
 
-Python SDK and CLI for [NexCloud](https://nextron.physionlabs.ai), which trains open models in two modes and
+Python SDK and CLI for [NexCloud](https://nexcloud.physionlabs.ai), which trains open models in two modes and
 serves what it trained:
 
 - **Managed training**: one request (model + dataset + settings) fine-tunes a model and leaves a checkpoint to download:
@@ -21,7 +21,7 @@ serves what it trained:
 
 ```bash
 uv venv && uv pip install --prerelease=allow nextron-cloud   # or, in a uv project: uv add --prerelease=allow nextron-cloud
-export NEXTRON_API_KEY="nk_live_..."                           # API keys page on nextron.physionlabs.ai
+export NEXTRON_API_KEY="nk_live_..."                           # API keys page on nexcloud.physionlabs.ai
 uv run nextron-cloud models                                    # what can be trained now, at what price
 ```
 
