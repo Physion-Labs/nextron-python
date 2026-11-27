@@ -26,6 +26,10 @@ A Hugging Face model directory in bf16: `config.json`, `generation_config.json`,
 `model.safetensors.index.json`, the tokenizer files and `chat_template.jinja`. LoRA jobs are merged: the directory is
 a full model. It loads wherever the base model loads, with the same versions.
 
+A LoRA job of `kimi-k3.1-pro` is the exception: its checkpoint is the adapters alone, in peft's layout
+(`adapter_model.safetensors`, about 1 GB in bf16 at rank 32, and `adapter_config.json`, beside the tokenizer files),
+because the merged model is 5.6 TB. Load it on the base model with peft, or merge it there yourself.
+
 ## Serve and evaluate
 
 vLLM (needs GPUs that hold the model; a version that supports the base model):

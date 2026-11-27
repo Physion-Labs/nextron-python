@@ -21,8 +21,9 @@ Longer-context versions are separate ids (for example `...-256k`) with their own
 
 - **full**: every weight trained; FP32 master weights, gradients and AdamW states, BF16 compute.
 - **lora**: rank 32, alpha 64, on every linear layer of the language model (routed MoE experts excluded); base
-  weights frozen. The adapters are **merged** into the checkpoint, so it is a full model like a full fine-tune.
-  Most models have it; `kimi-k3.1-pro`, the Olmo-3 models and the long-context ids (`...-256k`, `...-1m`) do not
+  weights frozen. The adapters are **merged** into the checkpoint, so it is a full model like a full fine-tune
+  (`kimi-k3.1-pro`: the adapters alone, [checkpoints.md](checkpoints.md)).
+  Most models have it; the Olmo-3 models and the long-context ids (`...-256k`, `...-1m`) do not
   (a model's `methods` say so). The larger models train LoRA on fewer GPUs than a full fine-tune: with `layout="auto"` the job takes the
   smallest setup that trains it.
 

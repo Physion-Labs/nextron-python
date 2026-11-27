@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0rc42
+
+- Docs: `kimi-k3.1-pro` trains LoRA (64 H100s, samples up to 32K); its checkpoint is the LoRA adapters alone.
+
 ## 0.1.0rc41
 
 - The default base URL is `https://nexcloud.physionlabs.ai`, the console's new address. The older
