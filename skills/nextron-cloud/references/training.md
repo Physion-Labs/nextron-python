@@ -45,6 +45,26 @@ once; after that it is fetched from storage first, which takes some minutes and 
 parallelism (120B and up) do not take it yet: `nextron-cloud models` shows `from_job` for each model. The price is the
 model's own.
 
+### Resume a failed job
+
+A long job saves its state about every half hour while it trains (the weights, the optimizer and its place in the
+data), on the models that list `resume` in `nextron-cloud models`. If a node fails, the job goes back in the queue and
+goes on from its last save by itself. If the job fails, `jobs get` shows the step of that save as `resumable_step`,
+and a new job can go on from it:
+
+```bash
+nextron-cloud jobs resume job_...
+```
+
+```python
+job = client.jobs.resume("job_...")
+```
+
+The new job is the failed job's own request (model, dataset, layout and params) with `resume_from` set, so a changed
+setting is refused. It runs on the same cluster, starts at the step after the save, and is billed for the whole
+training once: the failed job is not charged, the job that finishes is charged every step. The save is kept 7 days
+after the failure.
+
 ## Params
 
 All optional; the server fills the rest from a tested recipe for the model.

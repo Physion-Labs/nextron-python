@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0rc43
+
+- `jobs.resume(job_id)` and `nextron-cloud jobs resume`: a new job that goes on from the last step a failed job saved
+  (`Job.resumable_step`), with that job's own request. `models` lists `resume` for the models whose jobs save while
+  they train.
+
 ## 0.1.0rc42
 
 - Docs: `kimi-k3.1-pro` trains LoRA (64 H100s, samples up to 32K); its checkpoint is the LoRA adapters alone.

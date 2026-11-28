@@ -338,6 +338,7 @@ def _parser() -> argparse.ArgumentParser:
                       ("wait-checkpoint", lambda c, a: c.jobs.wait_checkpoint(a.job_id)),
                       ("progress", lambda c, a: c.jobs.progress(a.job_id)), ("billing", lambda c, a: c.jobs.billing(a.job_id)),
                       ("metrics", lambda c, a: c.jobs.metrics(a.job_id)), ("cancel", lambda c, a: c.jobs.cancel(a.job_id)),
+                      ("resume", lambda c, a: c.jobs.resume(a.job_id)),
                       ("checkpoint", lambda c, a: c.jobs.checkpoint(a.job_id))):
         cmd = jobs.add_parser(name)
         cmd.add_argument("job_id")

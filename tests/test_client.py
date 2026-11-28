@@ -27,6 +27,21 @@ def test_create_job_retries_with_the_same_idempotency_key(make_client):
     assert len(keys) == 2 and keys[0] == keys[1]
 
 
+def test_resume_asks_for_the_failed_jobs_own_request(make_client):
+    failed = JOB | {"state": "failed", "layout": "1x8-h100", "params": {"max_steps": 300, "seed": 7}, "resumable_step": 120}
+    sent = []
+
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json=failed)
+        sent.append(body(request))
+        return httpx.Response(201, json=JOB | {"id": "job_2"})
+
+    assert make_client(handler).jobs.resume("job_1").id == "job_2"
+    assert sent == [{"model": "qwen3.8-27b", "dataset_id": "ds_1", "layout": "1x8-h100",
+                     "params": {"max_steps": 300, "seed": 7, "resume_from": "job_1"}}]
+
+
 def test_errors_carry_the_server_message(make_client):
     def handler(request):
         if request.url.path == "/v1/me":

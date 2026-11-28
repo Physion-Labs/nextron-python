@@ -72,6 +72,7 @@ class ModelInfo(_Model):
     batch_size: bool  # whether params.batch_size is accepted
     validation_set: bool  # whether params.val_dataset_id is accepted
     from_job: bool = False  # a job or RL run of it can start from a finished job's or RL run's model (params.from_job)
+    resume: bool = False  # a full or LoRA job of it saves while it trains: one that fails can be resumed (jobs.resume)
     layouts: dict[str, ModelLayout]
 
 
@@ -120,6 +121,7 @@ class Job(_Model):
     notices: list[dict[str, str]] = []  # {"level": "info"|"warn"|"error", "text": ...}; from `get`
     timeline: dict[str, float | None] | None = None  # queued, starting, training, trained, saved, done; from `get`
     config: str | None = None  # the training config the engine ran, paths masked
+    resumable_step: int | None = None  # a failed job: the step `jobs.resume` goes on from
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -401,6 +403,8 @@ class TrainingParams(TypedDict, total=False):
     eval_steps: int
     # a finished training job of the same model: train on from the model it saved, not from the base model
     from_job: str
+    # a failed job with a `resumable_step`: go on from that step, the request otherwise the same (`jobs.resume`)
+    resume_from: str
     # grpo only: max_steps rounds of batch_size prompts, num_generations completions each
     reward: Literal["boxed", "exact", "remote"]
     num_generations: int

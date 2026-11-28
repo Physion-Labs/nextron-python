@@ -8,7 +8,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 
@@ -62,6 +62,14 @@ class Jobs:
     def cancel(self, job_id: str) -> Job:
         """Cancel a queued job now, or ask a running one to stop."""
         return Job.model_validate(self._client._post(f"/v1/training/jobs/{job_id}/cancel", retry=True))
+
+    def resume(self, job_id: str, *, idempotency_key: str | None = None) -> Job:
+        """Queue a job that goes on from the last step a failed job saved (its `resumable_step`): the same model,
+        dataset, layout and params, on the same weights, optimizer and place in the data."""
+        job = self.get(job_id)
+        return self.create(model=job.model, dataset_id=job.dataset_id, layout=job.layout,
+                           params=cast(TrainingParams, {**job.params, "resume_from": job_id}),
+                           name=job.name, tags=job.tags, idempotency_key=idempotency_key)
 
     def wait(self, job_id: str, *, timeout: float | None = None, poll_interval: float = 30) -> Job:
         """Wait until training is over: succeeded, failed or cancelled. A failed job is returned, not raised. The
